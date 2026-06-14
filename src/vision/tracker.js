@@ -21,7 +21,7 @@ export let currentPoseLandmarks  = null;
  * @param {HTMLVideoElement} videoElement — the webcam stream
  * @param {(event: Object) => void} onInteraction — callback for unified events
  */
-export function startFullTracking(videoElement, onInteraction) {
+export async function startFullTracking(videoElement, onInteraction) {
     console.log('[tracker] Initializing MediaPipe models...');
 
     // 1. Initialize Hands Model
@@ -34,6 +34,8 @@ export function startFullTracking(videoElement, onInteraction) {
         minDetectionConfidence: 0.7,
         minTrackingConfidence: 0.6
     });
+    await hands.initialize();
+    console.log("Hands ready");
 
     // 2. Initialize FaceMesh Model
     const faceMesh = new FaceMesh({
@@ -45,6 +47,8 @@ export function startFullTracking(videoElement, onInteraction) {
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5
     });
+    await faceMesh.initialize();
+    console.log("Face ready");
 
     // 3. Initialize Pose Model
     const pose = new Pose({
@@ -56,6 +60,8 @@ export function startFullTracking(videoElement, onInteraction) {
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5
     });
+    await pose.initialize();
+    console.log("Pose ready");
 
     // Cooldown states and past state lists
     let lastHandGesture = null;

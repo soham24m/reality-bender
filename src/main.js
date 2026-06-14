@@ -1,134 +1,170 @@
-import { startCamera } from './vision/camera.js';
+import { startFaceTracking } from './vision/face.js';
 import { 
-    startFullTracking, 
-    currentHandsLandmarks, 
-    currentFaceLandmarks, 
-    currentPoseLandmarks 
-} from './vision/tracker.js';
-import { drawOverlay } from './vision/overlay.js';
-import { addEvent, getRecentEvents, getSummary } from './ai/eventLog.js';
+    initDeformation, 
+    updateDeformation, 
+    setDeformationMode 
+} from './vision/deformation.js';
+import { startCamera } from './vision/camera.js';
 
-// DOM refs
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+// DOM Elements
 const video = document.getElementById('webcam');
+const deformationCanvas = document.getElementById('deformationCanvas');
+const statusDot = document.getElementById('statusDot');
+const expressionText = document.getElementById('expressionText');
+const fpsCounter = document.getElementById('fpsCounter');
+const effectPill = document.getElementById('effectPill');
+
+// State
+let lastLandmarks = null;
+let lastExpressions = {};
+let lastFaceDetectionTime = 0;
+let flashTimeout = null;
+let pillTimeout = null;
+
+// FPS counter variables
+let frameCount = 0;
+let lastFpsTime = performance.now();
 
 // Adjust canvas scale dynamically
 function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    deformationCanvas.width = window.innerWidth;
+    deformationCanvas.height = window.innerHeight;
 }
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// Local active tracking states
-let currentHandAction = null;
-let currentFaceActions = [];
-let currentPoseActions = [];
+/**
+ * Maps expressions to user-friendly effect names
+ */
+const EFFECT_NAMES = {
+    'SMILE': 'Mouth Pull',
+    'FROWN': 'Mouth Sad Pull',
+    'MOUTH_OPEN': 'Mouth Expansion',
+    'MOUTH_CLOSED': 'Lips Sealed',
+    'LIP_PURSE': 'Lip Purse Warping',
+    'JAW_DROP': 'Dramatic Jaw Stretch',
+    'LEFT_WINK': 'Left Eye Wink',
+    'RIGHT_WINK': 'Right Eye Wink',
+    'BOTH_BLINK': 'Double Blink Mode',
+    'LEFT_BROW_RAISE': 'Left Brow Lift',
+    'RIGHT_BROW_RAISE': 'Right Brow Lift',
+    'BOTH_BROWS_RAISE': 'Double Brow Lift',
+    'BROWS_FURROW': 'Forehead Compression',
+    'HEAD_TILT_LEFT': 'Face Left Stretch',
+    'HEAD_TILT_RIGHT': 'Face Right Stretch',
+    'HEAD_NOD_DOWN': 'Nod Down Distortion',
+    'HEAD_NOD_UP': 'Nod Up Distortion',
+    'CHEEK_PUFF': 'Radial Cheek Expansion',
+    'NOSE_SCRUNCH': 'Nose Bridge Compression'
+};
 
 /**
- * Handle new incoming human interaction events
+ * Handle incoming face expression data
  */
-function handleInteraction(event) {
-    // 1. Log event into rolling memory
-    addEvent(event);
+function handleFaceExpression(event) {
+    const { type, confidence, landmarks, timestamp } = event;
+    
+    lastLandmarks = landmarks;
+    lastFaceDetectionTime = timestamp;
+    lastExpressions[type] = confidence;
 
-    // 2. Log to developer console
-    console.log(`[interaction] ${event.source} -> ${event.type}`);
-    console.log(`Summary: ${getSummary()}`);
+    // Trigger visual dot flash (200ms white flash)
+    if (confidence > 0.6) {
+        statusDot.classList.add('flash');
+        if (flashTimeout) clearTimeout(flashTimeout);
+        flashTimeout = setTimeout(() => {
+            statusDot.classList.remove('flash');
+        }, 200);
 
-    // 3. Update active states with transient fade-outs
-    if (event.source === 'HAND') {
-        currentHandAction = event.type;
-        setTimeout(() => {
-            if (currentHandAction === event.type) currentHandAction = null;
-        }, 1200);
-    } else if (event.source === 'FACE') {
-        if (!currentFaceActions.includes(event.type)) {
-            currentFaceActions.push(event.type);
-            // Eyebrow and eye events fade out, mouth closed/open is managed by face.js state
-            setTimeout(() => {
-                currentFaceActions = currentFaceActions.filter(a => a !== event.type);
-            }, 800);
-        }
-    } else if (event.source === 'BODY') {
-        if (!currentPoseActions.includes(event.type)) {
-            currentPoseActions.push(event.type);
-            setTimeout(() => {
-                currentPoseActions = currentPoseActions.filter(a => a !== event.type);
-            }, 1000);
-        }
+        // Update Dock text
+        expressionText.textContent = `${type} (${Math.round(confidence * 100)}%)`;
+
+        // Update effect name floating pill
+        const effectName = EFFECT_NAMES[type] || type;
+        effectPill.textContent = effectName;
+        effectPill.classList.add('visible');
+
+        // Reset pill fade-out timer
+        if (pillTimeout) clearTimeout(pillTimeout);
+        pillTimeout = setTimeout(() => {
+            effectPill.classList.remove('visible');
+        }, 2000);
     }
 }
 
 /**
- * Animation loop to redraw screen components at 60fps
+ * Animation loop to run spring physics and canvas rendering at 60 FPS
  */
-function updateHUD() {
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Draw visual debug skeleton/dot overlays and rolling log panel
-    drawOverlay(
-        ctx,
-        currentHandsLandmarks,
-        currentFaceLandmarks,
-        currentPoseLandmarks,
-        getRecentEvents(5), // pass events from last 5 seconds
-        currentHandAction,
-        currentFaceActions,
-        currentPoseActions
-    );
-
-    // Render active interactions in top-left with distinct color system
-    let drawY = 50;
-
-    // Green for Hands
-    if (currentHandAction) {
-        ctx.font = 'bold 28px monospace';
-        ctx.fillStyle = '#4ade80';
-        ctx.fillText(`⚡ [HAND] ${currentHandAction}`, 24, drawY);
-        drawY += 36;
+function tick(timestamp) {
+    // 1. Calculate FPS
+    frameCount++;
+    const elapsed = timestamp - lastFpsTime;
+    if (elapsed >= 1000) {
+        const fps = Math.round((frameCount * 1000) / elapsed);
+        fpsCounter.textContent = `${fps} fps`;
+        frameCount = 0;
+        lastFpsTime = timestamp;
     }
 
-    // Blue for Face
-    currentFaceActions.forEach((action) => {
-        ctx.font = 'bold 28px monospace';
-        ctx.fillStyle = '#60a5fa';
-        ctx.fillText(`⚡ [FACE] ${action}`, 24, drawY);
-        drawY += 36;
-    });
+    // 2. Check if face is actively tracked (received message in last 1.5 seconds)
+    const isFaceTracked = lastLandmarks && (performance.now() - lastFaceDetectionTime < 1500);
 
-    // Orange for Body
-    currentPoseActions.forEach((action) => {
-        ctx.font = 'bold 28px monospace';
-        ctx.fillStyle = '#fb923c';
-        ctx.fillText(`⚡ [BODY] ${action}`, 24, drawY);
-        drawY += 36;
-    });
+    if (isFaceTracked) {
+        statusDot.classList.add('active');
+        
+        // Feed deformation engine with current physics target and coefficients
+        updateDeformation(lastLandmarks, lastExpressions);
+        
+        // Decay continuous expressions slightly so they return to rest if not refreshed
+        Object.keys(lastExpressions).forEach(key => {
+            lastExpressions[key] *= 0.85; 
+            if (lastExpressions[key] < 0.05) delete lastExpressions[key];
+        });
+    } else {
+        statusDot.classList.remove('active');
+        expressionText.textContent = 'No face detected';
+        
+        // Run deformation with empty expressions so mesh relaxes to natural neutral state
+        if (lastLandmarks) {
+            updateDeformation(lastLandmarks, {});
+        }
+    }
 
-    requestAnimationFrame(updateHUD);
+    requestAnimationFrame(tick);
 }
 
 // Bootstrap flow
 async function init() {
     try {
-        console.log('[main] Starting Project Nexus tracking system...');
+        console.log('[main] Starting Apple Liquid Glass UI and Deformation Engine...');
+        
+        // 1. Access user's camera
         const camVideo = await startCamera(video);
         
-        // Hide loading panel
-        const loading = document.getElementById('loading');
-        if (loading) {
-            loading.style.display = 'none';
-        }
+        // 2. Initialize deformation renderer
+        initDeformation(camVideo, deformationCanvas);
+        
+        // Support switching render modes with 1, 2, 3 hotkeys
+        window.addEventListener('keydown', (e) => {
+            if (e.key === '1') {
+                setDeformationMode('NATURAL');
+                console.log('Rendering: NATURAL');
+            } else if (e.key === '2') {
+                setDeformationMode('WIREFRAME');
+                console.log('Rendering: WIREFRAME');
+            } else if (e.key === '3') {
+                setDeformationMode('GHOST');
+                console.log('Rendering: GHOST');
+            }
+        });
 
-        // Start single camera stream and feed to all models
-        startFullTracking(camVideo, handleInteraction);
+        // 3. Start high-frequency MediaPipe FaceMesh stream
+        startFaceTracking(camVideo, handleFaceExpression);
 
-        // Run UI update loop
-        requestAnimationFrame(updateHUD);
+        // 4. Start 60fps game loop
+        requestAnimationFrame(tick);
 
-        console.log('[main] Nexus tracker online.');
+        console.log('[main] Deformation system initialized successfully.');
     } catch (err) {
         console.error('[main] Boot failed:', err);
     }

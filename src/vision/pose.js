@@ -17,58 +17,69 @@ const R_WRIST = 16;
 const L_HIP = 23;
 const R_HIP = 24;
 
+let armsRaisedFrames = 0;
+
 export function analyzePose(landmarks) {
     if (!landmarks || landmarks.length === 0) return [];
 
     const events = [];
 
-    const leftWrist = landmarks[L_WRIST];
-    const rightWrist = landmarks[R_WRIST];
-    const leftShoulder = landmarks[L_SHOULDER];
-    const rightShoulder = landmarks[R_SHOULDER];
-    const leftHip = landmarks[L_HIP];
-    const rightHip = landmarks[R_HIP];
+    const leftWrist = landmarks[15];
+    const rightWrist = landmarks[16];
+    const leftShoulder = landmarks[11];
+    const rightShoulder = landmarks[12];
+    const leftHip = landmarks[23];
+    const rightHip = landmarks[24];
 
-    // Ensure all critical landmarks exist
     if (!leftWrist || !rightWrist || !leftShoulder || !rightShoulder || !leftHip || !rightHip) {
         return [];
     }
 
-    // 1. Arms Raised (both wrist y values are higher on screen than shoulders)
-    // Remember: y coordinate decreases as you go up
+    // BOTH_ARMS_RAISED: Both wrists y position above both shoulders y position
+    // Trigger when true for 3 consecutive frames
     if (leftWrist.y < leftShoulder.y && rightWrist.y < rightShoulder.y) {
-        events.push('ARMS_RAISED');
+        armsRaisedFrames++;
+        if (armsRaisedFrames >= 3) {
+            events.push('BOTH_ARMS_RAISED');
+        }
+    } else {
+        armsRaisedFrames = 0;
     }
 
-    // 2. Left Punch (Left wrist extended horizontally/vertically and depth z is closer to camera)
-    const leftArmDist = Math.hypot(leftWrist.x - leftShoulder.x, leftWrist.y - leftShoulder.y);
-    if (leftArmDist > 0.35 && leftWrist.z < leftShoulder.z - 0.22) {
+    // LEFT_PUNCH: Left wrist x is significantly to the right of left shoulder x
+    // Left wrist y is near shoulder height
+    if (leftWrist.x > leftShoulder.x + 0.1 && Math.abs(leftWrist.y - leftShoulder.y) < 0.15) {
         events.push('LEFT_PUNCH');
     }
 
-    // 3. Right Punch (Right wrist extended and depth z is closer to camera)
-    const rightArmDist = Math.hypot(rightWrist.x - rightShoulder.x, rightWrist.y - rightShoulder.y);
-    if (rightArmDist > 0.35 && rightWrist.z < rightShoulder.z - 0.22) {
+    // RIGHT_PUNCH: Right wrist x is significantly to the left of right shoulder x
+    // Right wrist y is near shoulder height
+    if (rightWrist.x < rightShoulder.x - 0.1 && Math.abs(rightWrist.y - rightShoulder.y) < 0.15) {
         events.push('RIGHT_PUNCH');
     }
 
-    // 4. Crouch (Hips drop below y = 0.72)
-    const hipsY = (leftHip.y + rightHip.y) / 2;
-    if (hipsY > 0.72) {
-        events.push('CROUCH');
+    // LEAN_LEFT: Shoulder midpoint x shifts left from center by more than 0.15
+    const shoulderMidX = (leftShoulder.x + rightShoulder.x) / 2;
+    if (shoulderMidX < 0.35) { // 0.5 - 0.15
+        events.push('LEAN_LEFT');
+    } 
+    // LEAN_RIGHT: Same but right
+    else if (shoulderMidX > 0.65) { // 0.5 + 0.15
+        events.push('LEAN_RIGHT');
     }
 
-    // 5. Lean Left & Lean Right (Based on midpoint of shoulders relative to center x = 0.5)
-    const shoulderMidpointX = (leftShoulder.x + rightShoulder.x) / 2;
-    // Mirrored coordinates check
-    if (shoulderMidpointX < 0.44) {
-        events.push('LEAN_LEFT');
-    } else if (shoulderMidpointX > 0.56) {
-        events.push('LEAN_RIGHT');
+    // CROUCH: Hip landmarks y value drops below a threshold compared to shoulder landmarks
+    // (e.g., hips and shoulders get closer together vertically)
+    const hipsY = (leftHip.y + rightHip.y) / 2;
+    const shouldersY = (leftShoulder.y + rightShoulder.y) / 2;
+    if (Math.abs(hipsY - shouldersY) < 0.25) {
+        events.push('CROUCH');
     }
 
     return events;
 }
+
+let poseCooldowns = {};
 
 export function startPoseTracking(videoElement, onPoseEvent) {
     const pose = new Pose({
@@ -82,8 +93,6 @@ export function startPoseTracking(videoElement, onPoseEvent) {
         minTrackingConfidence: 0.5
     });
 
-    let lastEvents = [];
-
     pose.onResults((results) => {
         if (!results.poseLandmarks || results.poseLandmarks.length === 0) {
             return;
@@ -91,14 +100,16 @@ export function startPoseTracking(videoElement, onPoseEvent) {
 
         const landmarks = results.poseLandmarks;
         const currentEvents = analyzePose(landmarks);
+        const now = performance.now();
 
         currentEvents.forEach(evt => {
-            if (!lastEvents.includes(evt)) {
+            const lastTime = poseCooldowns[evt] || 0;
+            if (now - lastTime > 500) { // 500ms cooldown
+                console.log(`[Pose Event] ${evt}`);
                 onPoseEvent(evt, landmarks);
+                poseCooldowns[evt] = now;
             }
         });
-
-        lastEvents = currentEvents;
     });
 
     const camera = new Camera(videoElement, {
