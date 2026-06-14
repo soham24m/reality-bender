@@ -1,172 +1,158 @@
-import { startFaceTracking } from './vision/face.js';
-import { 
-    initDeformation, 
-    updateDeformation, 
-    setDeformationMode 
-} from './vision/deformation.js';
-import { startCamera } from './vision/camera.js';
-
-// DOM Elements
-const video = document.getElementById('webcam');
-const deformationCanvas = document.getElementById('deformationCanvas');
-const statusDot = document.getElementById('statusDot');
-const expressionText = document.getElementById('expressionText');
-const fpsCounter = document.getElementById('fpsCounter');
-const effectPill = document.getElementById('effectPill');
-
-// State
-let lastLandmarks = null;
-let lastExpressions = {};
-let lastFaceDetectionTime = 0;
-let flashTimeout = null;
-let pillTimeout = null;
-
-// FPS counter variables
-let frameCount = 0;
-let lastFpsTime = performance.now();
-
-// Adjust canvas scale dynamically
-function resizeCanvas() {
-    deformationCanvas.width = window.innerWidth;
-    deformationCanvas.height = window.innerHeight;
-}
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
-
 /**
- * Maps expressions to user-friendly effect names
+ * main.js — Reality Bender entry point
+ *
+ * Connects MediaPipe FaceMesh → expression analysis → rubber face warp
+ * and drives the bottom-left glass pill UI.
  */
-const EFFECT_NAMES = {
-    'SMILE': 'Mouth Pull',
-    'FROWN': 'Mouth Sad Pull',
-    'MOUTH_OPEN': 'Mouth Expansion',
-    'MOUTH_CLOSED': 'Lips Sealed',
-    'LIP_PURSE': 'Lip Purse Warping',
-    'JAW_DROP': 'Dramatic Jaw Stretch',
-    'LEFT_WINK': 'Left Eye Wink',
-    'RIGHT_WINK': 'Right Eye Wink',
-    'BOTH_BLINK': 'Double Blink Mode',
-    'LEFT_BROW_RAISE': 'Left Brow Lift',
-    'RIGHT_BROW_RAISE': 'Right Brow Lift',
-    'BOTH_BROWS_RAISE': 'Double Brow Lift',
-    'BROWS_FURROW': 'Forehead Compression',
-    'HEAD_TILT_LEFT': 'Face Left Stretch',
-    'HEAD_TILT_RIGHT': 'Face Right Stretch',
-    'HEAD_NOD_DOWN': 'Nod Down Distortion',
-    'HEAD_NOD_UP': 'Nod Up Distortion',
-    'CHEEK_PUFF': 'Radial Cheek Expansion',
-    'NOSE_SCRUNCH': 'Nose Bridge Compression'
+
+import { startCamera }     from './vision/camera.js';
+import { startFaceTracking } from './vision/face.js';
+import { initRubberFace, updateRubberFace } from './effects/rubberFace.js';
+
+// ─── DOM refs ─────────────────────────────────────────────────────────────────
+const video      = document.getElementById('webcam');
+const trackDot   = document.getElementById('trackDot');
+const pillAction = document.getElementById('pillAction');
+const pillStatus = document.getElementById('pillStatus');
+const glassPill  = document.getElementById('glassPill');
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let lastLandmarks        = null;
+let lastExpressions      = {};
+let faceDetectedAt       = 0;
+const FACE_TIMEOUT_MS    = 1500;
+
+let pillUpdateTimer      = null;
+let pendingAction        = null;
+
+// ─── Expression → display label ───────────────────────────────────────────────
+const ACTION_LABELS = {
+    'HEAD_TILT_RIGHT':  'Cheek stretch right',
+    'HEAD_TILT_LEFT':   'Cheek stretch left',
+    'MOUTH_OPEN':       'Mouth open',
+    'JAW_DROP':         'Jaw drop',
+    'LEFT_BROW_RAISE':  'Left brow raise',
+    'RIGHT_BROW_RAISE': 'Right brow raise',
+    'BOTH_BROWS_RAISE': 'Brows raised',
+    'SMILE':            'Smiling',
+    'FROWN':            'Frowning',
+    'BROWS_FURROW':     'Brows furrowed',
+    'LIP_PURSE':        'Lip purse',
+    'CHEEK_PUFF':       'Cheek puff',
+    'NOSE_SCRUNCH':     'Nose scrunch',
+    'LEFT_WINK':        'Left wink',
+    'RIGHT_WINK':       'Right wink',
+    'BOTH_BLINK':       'Blinking',
+    'HEAD_NOD_DOWN':    'Nodding down',
+    'HEAD_NOD_UP':      'Nodding up',
 };
 
-/**
- * Handle incoming face expression data
- */
-function handleFaceExpression(event) {
-    const { type, confidence, landmarks, timestamp } = event;
-    
-    lastLandmarks = landmarks;
-    lastFaceDetectionTime = timestamp;
-    lastExpressions[type] = confidence;
+// Priority order — only the highest-confidence one is shown at a time
+const PRIORITY = [
+    'JAW_DROP', 'BOTH_BROWS_RAISE', 'LEFT_WINK', 'RIGHT_WINK', 'BOTH_BLINK',
+    'CHEEK_PUFF', 'HEAD_TILT_RIGHT', 'HEAD_TILT_LEFT', 'MOUTH_OPEN',
+    'SMILE', 'FROWN', 'BROWS_FURROW', 'LEFT_BROW_RAISE', 'RIGHT_BROW_RAISE',
+    'LIP_PURSE', 'NOSE_SCRUNCH', 'HEAD_NOD_DOWN', 'HEAD_NOD_UP',
+];
 
-    // Trigger visual dot flash (200ms white flash)
-    if (confidence > 0.6) {
-        statusDot.classList.add('flash');
-        if (flashTimeout) clearTimeout(flashTimeout);
-        flashTimeout = setTimeout(() => {
-            statusDot.classList.remove('flash');
-        }, 200);
+const CONFIDENCE_THRESHOLD = 0.25;
 
-        // Update Dock text
-        expressionText.textContent = `${type} (${Math.round(confidence * 100)}%)`;
+// ─── Pill UI ──────────────────────────────────────────────────────────────────
+function pickTopExpression(exprs) {
+    for (const key of PRIORITY) {
+        if ((exprs[key] || 0) >= CONFIDENCE_THRESHOLD) return key;
+    }
+    return null;
+}
 
-        // Update effect name floating pill
-        const effectName = EFFECT_NAMES[type] || type;
-        effectPill.textContent = effectName;
-        effectPill.classList.add('visible');
+function setPillAction(text) {
+    // Crossfade: fade out → update → fade in
+    glassPill.classList.add('transitioning');
+    setTimeout(() => {
+        pillAction.textContent = text;
+        glassPill.classList.remove('transitioning');
+    }, 150);
+}
 
-        // Reset pill fade-out timer
-        if (pillTimeout) clearTimeout(pillTimeout);
-        pillTimeout = setTimeout(() => {
-            effectPill.classList.remove('visible');
-        }, 2000);
+function setTracking(active) {
+    if (active) {
+        trackDot.classList.add('active');
+        pillStatus.textContent = 'tracking';
+    } else {
+        trackDot.classList.remove('active');
+        pillStatus.textContent = 'searching...';
+        setPillAction('Ready');
     }
 }
 
-/**
- * Animation loop to run spring physics and canvas rendering at 60 FPS
- */
-function tick(timestamp) {
-    // 1. Calculate FPS
-    frameCount++;
-    const elapsed = timestamp - lastFpsTime;
-    if (elapsed >= 1000) {
-        const fps = Math.round((frameCount * 1000) / elapsed);
-        fpsCounter.textContent = `${fps} fps`;
-        frameCount = 0;
-        lastFpsTime = timestamp;
+// ─── Face expression handler ──────────────────────────────────────────────────
+function handleFaceExpression({ type, confidence, landmarks, timestamp }) {
+    lastLandmarks   = landmarks;
+    faceDetectedAt  = performance.now();
+
+    // Accumulate the expressions map (single frame burst of events)
+    lastExpressions[type] = confidence;
+
+    // Decay others a tiny bit so stale readings don't linger
+    for (const key of Object.keys(lastExpressions)) {
+        if (key !== type) lastExpressions[key] *= 0.85;
+        if (lastExpressions[key] < 0.05) delete lastExpressions[key];
     }
 
-    // 2. Check if face is actively tracked (received message in last 1.5 seconds)
-    const isFaceTracked = lastLandmarks && (performance.now() - lastFaceDetectionTime < 1500);
+    // Pick the most prominent and update pill
+    const top = pickTopExpression(lastExpressions);
+    if (top) {
+        const label = ACTION_LABELS[top] || top.toLowerCase().replace(/_/g, ' ');
+        if (pillAction.textContent !== label) {
+            setPillAction(label);
+        }
+    }
+
+    // Mark tracking active
+    setTracking(true);
+}
+
+// ─── Render loop ─────────────────────────────────────────────────────────────
+function tick() {
+    const now = performance.now();
+    const isFaceTracked = lastLandmarks && (now - faceDetectedAt < FACE_TIMEOUT_MS);
 
     if (isFaceTracked) {
-        statusDot.classList.add('active');
-        
-        // Feed deformation engine with current physics target and coefficients
-        updateDeformation(lastLandmarks, lastExpressions);
-        
-        // Decay continuous expressions slightly so they return to rest if not refreshed
-        Object.keys(lastExpressions).forEach(key => {
-            lastExpressions[key] *= 0.85; 
-            if (lastExpressions[key] < 0.05) delete lastExpressions[key];
-        });
+        setTracking(true);
+
+        // Pass raw landmarks + current expression map to the warp engine
+        updateRubberFace(lastLandmarks, lastExpressions);
     } else {
-        statusDot.classList.remove('active');
-        expressionText.textContent = 'No face detected';
-        
-        // Run deformation with empty expressions so mesh relaxes to natural neutral state
-        if (lastLandmarks) {
-            updateDeformation(lastLandmarks, {});
-        }
+        setTracking(false);
     }
 
     requestAnimationFrame(tick);
 }
 
-// Bootstrap flow
+// ─── Boot ─────────────────────────────────────────────────────────────────────
 async function init() {
     try {
-        console.log('[main] Starting Apple Liquid Glass UI and Deformation Engine...');
-        
-        // 1. Access user's camera
+        console.log('[main] Starting Reality Bender...');
+
         const camVideo = await startCamera(video);
-        
-        // 2. Initialize deformation renderer
-        initDeformation(camVideo, deformationCanvas);
-        
-        // Support switching render modes with 1, 2, 3 hotkeys
-        window.addEventListener('keydown', (e) => {
-            if (e.key === '1') {
-                setDeformationMode('NATURAL');
-                console.log('Rendering: NATURAL');
-            } else if (e.key === '2') {
-                setDeformationMode('WIREFRAME');
-                console.log('Rendering: WIREFRAME');
-            } else if (e.key === '3') {
-                setDeformationMode('GHOST');
-                console.log('Rendering: GHOST');
-            }
-        });
+        console.log('[main] Camera online');
 
-        // 3. Start high-frequency MediaPipe FaceMesh stream
+        // Init rubber face warp engine
+        initRubberFace(camVideo);
+        console.log('[main] Rubber face engine ready');
+
+        // Start MediaPipe FaceMesh streaming
         startFaceTracking(camVideo, handleFaceExpression);
+        console.log('[main] Face tracking started');
 
-        // 4. Start 60fps game loop
+        // Start 60fps loop
         requestAnimationFrame(tick);
 
-        console.log('[main] Deformation system initialized successfully.');
+        console.log('[main] Ready. Console will log expressions as they\'re detected.');
     } catch (err) {
         console.error('[main] Boot failed:', err);
+        pillAction.textContent = 'Camera error';
+        pillStatus.textContent = err.message;
     }
 }
 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Reality Bender — Face Deformation and Liquid Glass HUD">
+    <meta name="description" content="Reality Bender — Elastic Face Deformation">
     <title>Reality Bender</title>
     <style>
         * {
@@ -20,7 +20,7 @@
             -webkit-user-select: none;
         }
 
-        /* Video background */
+        /* Video background — mirrored like a selfie cam */
         #webcam {
             position: fixed;
             top: 0;
@@ -29,11 +29,11 @@
             height: 100vh;
             object-fit: cover;
             z-index: 0;
-            transform: scaleX(-1); /* mirror feed */
+            transform: scaleX(-1);
         }
 
-        /* Primary and secondary canvases */
-        canvas {
+        /* Effect canvas — NOT mirrored in CSS, mirroring handled in JS */
+        #effectCanvas {
             position: fixed;
             top: 0;
             left: 0;
@@ -41,107 +41,76 @@
             height: 100vh;
             background: transparent;
             pointer-events: none;
-            transform: scaleX(-1); /* mirror to align with webcam */
+            z-index: 3;
         }
 
-        #gameCanvas {
-            z-index: 1;
-        }
-
-        #deformationCanvas {
-            z-index: 2;
-        }
-
-        /* Apple Liquid Glass Dock */
-        .glass-dock {
+        /* Bottom-left glass pill */
+        .glass-pill {
             position: fixed;
-            bottom: 24px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(24px) saturate(180%);
-            -webkit-backdrop-filter: blur(24px) saturate(180%);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 100px;
-            padding: 12px 28px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            bottom: 28px;
+            left: 28px;
+            background: rgba(255, 255, 255, 0.07);
+            backdrop-filter: blur(20px) saturate(200%);
+            -webkit-backdrop-filter: blur(20px) saturate(200%);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 20px;
+            padding: 10px 18px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.15);
             display: flex;
-            gap: 24px;
             align-items: center;
+            gap: 10px;
             z-index: 10;
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: opacity 150ms ease, transform 150ms ease;
         }
 
-        /* Tracking status dot */
-        .status-dot {
-            width: 8px;
-            height: 8px;
+        .glass-pill.transitioning {
+            opacity: 0;
+            transform: translateY(4px);
+        }
+
+        /* Tracking dot */
+        .track-dot {
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
-            background: #8e8e93; /* default grey */
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
         }
 
-        .status-dot.active {
-            background: #34c759; /* green */
-            box-shadow: 0 0 8px rgba(52, 199, 89, 0.8);
-            animation: pulse 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+        .track-dot.active {
+            background: rgba(120, 255, 160, 0.9);
+            box-shadow: 0 0 6px rgba(120, 255, 160, 0.6);
+            animation: dot-pulse 2s infinite ease-in-out;
         }
 
-        .status-dot.flash {
-            background: #ffffff !important;
-            box-shadow: 0 0 12px rgba(255, 255, 255, 1.0) !important;
+        @keyframes dot-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
         }
 
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.3); }
-            100% { transform: scale(1); }
+        /* Text container */
+        .pill-text {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
         }
 
-        /* Detected expression text */
-        .expression-text {
+        .pill-action {
             font-size: 13px;
             font-weight: 500;
-            letter-spacing: 0.02em;
-            color: rgba(255, 255, 255, 0.85);
-            min-width: 120px;
-            text-align: center;
-            transition: opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        /* FPS counter */
-        .fps-counter {
-            font-size: 11px;
-            color: rgba(255, 255, 255, 0.4);
-            font-variant-numeric: tabular-nums;
-        }
-
-        /* Floating effect pill */
-        .effect-pill {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(24px) saturate(180%);
-            -webkit-backdrop-filter: blur(24px) saturate(180%);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 100px;
-            padding: 8px 16px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
             color: rgba(255, 255, 255, 0.9);
-            z-index: 10;
-            opacity: 0;
-            transform: translateY(-5px);
-            transition: all 400ms cubic-bezier(0.4, 0, 0.2, 1);
+            letter-spacing: 0.03em;
+            text-transform: capitalize;
+            line-height: 1.2;
         }
 
-        .effect-pill.visible {
-            opacity: 1;
-            transform: translateY(0);
+        .pill-status {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.35);
+            letter-spacing: 0.05em;
+            line-height: 1;
         }
     </style>
 </head>
@@ -149,21 +118,17 @@
     <!-- Mirrored full-screen video background -->
     <video id="webcam" autoplay playsinline muted></video>
 
-    <!-- Transparent Canvas for overlays -->
-    <canvas id="gameCanvas"></canvas>
+    <!-- Effect canvas for rubber face warping -->
+    <canvas id="effectCanvas"></canvas>
 
-    <!-- Secondary Canvas for elastic face deformation -->
-    <canvas id="deformationCanvas"></canvas>
-
-    <!-- Liquid Glass Dock at bottom center -->
-    <div class="glass-dock" id="glassDock">
-        <div class="status-dot" id="statusDot"></div>
-        <div class="expression-text" id="expressionText">No face detected</div>
-        <div class="fps-counter" id="fpsCounter">-- fps</div>
+    <!-- Bottom-left minimal glass pill -->
+    <div class="glass-pill" id="glassPill">
+        <div class="track-dot" id="trackDot"></div>
+        <div class="pill-text">
+            <div class="pill-action" id="pillAction">Ready</div>
+            <div class="pill-status" id="pillStatus">searching...</div>
+        </div>
     </div>
-
-    <!-- Floating Pill top-right for active effect -->
-    <div class="effect-pill" id="effectPill">Normal Mode</div>
 
     <!-- MediaPipe Solutions via CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
