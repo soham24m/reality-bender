@@ -7,11 +7,17 @@
 
 /**
  * Initializes the webcam and attaches the stream to the given video element.
- * @param {HTMLVideoElement} videoElement — the hidden <video> to feed
+ * @param {HTMLVideoElement} videoElement — the video element to feed
  * @returns {Promise<HTMLVideoElement>} — resolves once the stream is live
  */
 export async function startCamera(videoElement) {
     try {
+        // Autoplay, playsinline, and muted attributes are required for iOS Safari and mobile browsers
+        videoElement.setAttribute('autoplay', 'true');
+        videoElement.setAttribute('playsinline', 'true');
+        videoElement.setAttribute('muted', 'true');
+        videoElement.muted = true; // double check it is programmatically muted
+
         const stream = await navigator.mediaDevices.getUserMedia({
             video: {
                 width: { ideal: 1280 },
@@ -24,15 +30,26 @@ export async function startCamera(videoElement) {
 
         videoElement.srcObject = stream;
 
+        // Explicitly call play
+        try {
+            await videoElement.play();
+        } catch (playError) {
+            console.warn('[camera] videoElement.play() failed or was interrupted, waiting for user gesture', playError);
+        }
+
         // Wait for the video to actually start playing before resolving
         return new Promise((resolve) => {
-            videoElement.onloadedmetadata = () => {
-                videoElement.play();
-                console.log(
-                    `[camera] Webcam live — ${videoElement.videoWidth}×${videoElement.videoHeight}`
-                );
+            if (videoElement.readyState >= 3) { // HAVE_FUTURE_DATA
                 resolve(videoElement);
-            };
+            } else {
+                videoElement.onloadedmetadata = () => {
+                    videoElement.play().catch(() => {});
+                    console.log(
+                        `[camera] Webcam live — ${videoElement.videoWidth}×${videoElement.videoHeight}`
+                    );
+                    resolve(videoElement);
+                };
+            }
         });
     } catch (err) {
         console.error('[camera] Failed to access webcam:', err.message);

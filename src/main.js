@@ -1,12 +1,19 @@
-import { startCamera }       from './vision/camera.js';
-import { startHandTracking } from './vision/gestures.js';
+import { startCamera } from './vision/camera.js';
+import { 
+    startFullTracking, 
+    currentHandsLandmarks, 
+    currentFaceLandmarks, 
+    currentPoseLandmarks 
+} from './vision/tracker.js';
+import { drawOverlay } from './vision/overlay.js';
+import { addEvent, getRecentEvents, getSummary } from './ai/eventLog.js';
 
-// Get DOM elements
+// DOM refs
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const video = document.getElementById('webcam');
 
-// Adjust canvas dimensions to match viewport size
+// Adjust canvas scale dynamically
 function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -14,42 +21,114 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
+// Local active tracking states
+let currentHandAction = null;
+let currentFaceActions = [];
+let currentPoseActions = [];
+
 /**
- * Handles detected gestures by logging them to the console and
- * drawing the gesture name on the canvas.
+ * Handle new incoming human interaction events
  */
-function handleGesture(gesture) {
-    // Log gesture to console
-    console.log(`[gesture] ${gesture}`);
+function handleInteraction(event) {
+    // 1. Log event into rolling memory
+    addEvent(event);
 
-    // Clear previous text by clearing the entire canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 2. Log to developer console
+    console.log(`[interaction] ${event.source} -> ${event.type}`);
+    console.log(`Summary: ${getSummary()}`);
 
-    // Draw the gesture name on the top-left corner
-    // White text, 28px, monospace font
-    ctx.font = '28px monospace';
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(gesture, 20, 50);
+    // 3. Update active states with transient fade-outs
+    if (event.source === 'HAND') {
+        currentHandAction = event.type;
+        setTimeout(() => {
+            if (currentHandAction === event.type) currentHandAction = null;
+        }, 1200);
+    } else if (event.source === 'FACE') {
+        if (!currentFaceActions.includes(event.type)) {
+            currentFaceActions.push(event.type);
+            // Eyebrow and eye events fade out, mouth closed/open is managed by face.js state
+            setTimeout(() => {
+                currentFaceActions = currentFaceActions.filter(a => a !== event.type);
+            }, 800);
+        }
+    } else if (event.source === 'BODY') {
+        if (!currentPoseActions.includes(event.type)) {
+            currentPoseActions.push(event.type);
+            setTimeout(() => {
+                currentPoseActions = currentPoseActions.filter(a => a !== event.type);
+            }, 1000);
+        }
+    }
 }
 
-// Initialize the project on load
+/**
+ * Animation loop to redraw screen components at 60fps
+ */
+function updateHUD() {
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw visual debug skeleton/dot overlays and rolling log panel
+    drawOverlay(
+        ctx,
+        currentHandsLandmarks,
+        currentFaceLandmarks,
+        currentPoseLandmarks,
+        getRecentEvents(5), // pass events from last 5 seconds
+        currentHandAction,
+        currentFaceActions,
+        currentPoseActions
+    );
+
+    // Render active interactions in top-left with distinct color system
+    let drawY = 50;
+
+    // Green for Hands
+    if (currentHandAction) {
+        ctx.font = 'bold 28px monospace';
+        ctx.fillStyle = '#4ade80';
+        ctx.fillText(`⚡ [HAND] ${currentHandAction}`, 24, drawY);
+        drawY += 36;
+    }
+
+    // Blue for Face
+    currentFaceActions.forEach((action) => {
+        ctx.font = 'bold 28px monospace';
+        ctx.fillStyle = '#60a5fa';
+        ctx.fillText(`⚡ [FACE] ${action}`, 24, drawY);
+        drawY += 36;
+    });
+
+    // Orange for Body
+    currentPoseActions.forEach((action) => {
+        ctx.font = 'bold 28px monospace';
+        ctx.fillStyle = '#fb923c';
+        ctx.fillText(`⚡ [BODY] ${action}`, 24, drawY);
+        drawY += 36;
+    });
+
+    requestAnimationFrame(updateHUD);
+}
+
+// Bootstrap flow
 async function init() {
     try {
-        console.log('[main] Booting reality-bender...');
-        
-        // 1. Call startCamera and get the video element
+        console.log('[main] Starting Project Nexus tracking system...');
         const camVideo = await startCamera(video);
         
-        // Hide loading indicator if it exists
+        // Hide loading panel
         const loading = document.getElementById('loading');
         if (loading) {
             loading.style.display = 'none';
         }
 
-        // 2. Pass the video element to startHandTracking
-        startHandTracking(camVideo, handleGesture);
+        // Start single camera stream and feed to all models
+        startFullTracking(camVideo, handleInteraction);
 
-        console.log('[main] Reality Bender active.');
+        // Run UI update loop
+        requestAnimationFrame(updateHUD);
+
+        console.log('[main] Nexus tracker online.');
     } catch (err) {
         console.error('[main] Boot failed:', err);
     }

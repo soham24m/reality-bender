@@ -18,21 +18,28 @@
             font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
         }
 
+        /* Fixed full-screen overlay for rendering landmarks and interaction states */
         #gameCanvas {
-            display: block;
-            width: 100vw;
-            height: 100vh;
-        }
-
-        /* Hidden webcam feed — used as input for MediaPipe */
-        #webcam {
-            position: absolute;
+            position: fixed;
             top: 0;
             left: 0;
-            width: 1px;
-            height: 1px;
-            opacity: 0;
-            pointer-events: none;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+            background: transparent;
+            display: block;
+        }
+
+        /* Fixed full-screen mirrored background camera stream */
+        #webcam {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            z-index: 0;
+            transform: scaleX(-1); /* mirror feed */
         }
 
         /* Loading overlay */
@@ -80,12 +87,15 @@
     <!-- Full-screen canvas for game rendering and gesture HUD -->
     <canvas id="gameCanvas"></canvas>
 
-    <!-- Hidden video element fed by the user's webcam -->
-    <video id="webcam" autoplay playsinline></video>
+    <!-- Mirrored full-screen video element fed by the user's webcam -->
+    <video id="webcam" autoplay playsinline muted></video>
 
-    <!-- MediaPipe Hands via CDN -->
+    <!-- MediaPipe Solutions via CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
 
     <!-- App entry point -->
     <script type="module" src="src/main.js"></script>
