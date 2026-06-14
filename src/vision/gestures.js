@@ -2,9 +2,11 @@
  * gestures.js — Gesture detection via MediaPipe Hands
  *
  * Uses the global `Hands` class loaded from the MediaPipe CDN.
- * Detects two gestures:
- *   • FIST       — all fingertips curled below their base knuckles
- *   • OPEN_PALM  — all fingers fully extended
+ * Detects four gestures:
+ *   • FIST       — all 4 fingertips curled below their PIP joints
+ *   • OPEN_PALM  — all 4 fingertips extended above their PIP joints
+ *   • POINT      — only the index fingertip is extended above its PIP joint
+ *   • PINCH      — the distance between thumb tip and index tip is less than 0.05
  *
  * Landmark indices (per MediaPipe hand model):
  *   Thumb:   tip=4,  ip=3,   mcp=2
@@ -13,72 +15,66 @@
  *   Ring:    tip=16, pip=14, mcp=13
  *   Pinky:   tip=20, pip=18, mcp=17
  *
- * A finger is "curled" when its tip.y > its pip.y (lower on screen = higher y).
- * A finger is "extended" when its tip.y < its pip.y.
- * Thumb uses tip.x vs ip.x relative to wrist to handle left/right hands.
+ * Coordinates are normalized (0 to 1). The y-coordinate increases downwards,
+ * so "above" means a smaller y-value and "below" means a larger y-value.
  */
 
-// ─── Landmark index constants ────────────────────────────────────────
-const THUMB_TIP  = 4;
-const THUMB_IP   = 3;
-const WRIST      = 0;
-
-const FINGER_TIPS = [8, 12, 16, 20];   // index, middle, ring, pinky
-const FINGER_PIPS = [6, 10, 14, 18];   // corresponding PIP joints
-
-// ─── Gesture classification ─────────────────────────────────────────
+// Landmark index constants
+const THUMB_TIP = 4;
+const INDEX_TIP = 8;
+const INDEX_PIP = 6;
+const MIDDLE_TIP = 12;
+const MIDDLE_PIP = 10;
+const RING_TIP = 16;
+const RING_PIP = 14;
+const PINKY_TIP = 20;
+const PINKY_PIP = 18;
 
 /**
- * Determines if the thumb is curled.
- * Uses horizontal distance: thumb tip should be closer to wrist than thumb IP.
+ * Helper to check if a finger is extended (tip is above PIP joint).
  */
-function isThumbCurled(landmarks) {
-    const tipX   = landmarks[THUMB_TIP].x;
-    const ipX    = landmarks[THUMB_IP].x;
-    const wristX = landmarks[WRIST].x;
-
-    // Thumb is curled when its tip is closer to (or past) the wrist than its IP joint
-    return Math.abs(tipX - wristX) < Math.abs(ipX - wristX);
+function isExtended(landmarks, tipIdx, pipIdx) {
+    return landmarks[tipIdx].y < landmarks[pipIdx].y;
 }
 
 /**
- * Determines if a non-thumb finger is curled.
- * A finger is curled when its tip is below (higher y) its PIP joint.
- */
-function isFingerCurled(landmarks, tipIdx, pipIdx) {
-    return landmarks[tipIdx].y > landmarks[pipIdx].y;
-}
-
-/**
- * Classify the current hand pose into a gesture string.
- * @param {Array} landmarks — 21 normalized landmarks from MediaPipe
- * @returns {string|null} — "FIST", "OPEN_PALM", or null (unrecognized)
+ * Classify the hand Pose landmarks into a gesture.
+ * Checks for PINCH, POINT, FIST, and OPEN_PALM.
  */
 function classifyGesture(landmarks) {
-    const thumbCurled = isThumbCurled(landmarks);
+    // 1. PINCH Detection: Measure 2D Euclidean distance between thumb tip and index tip.
+    // If distance is less than 0.05, it is classified as a PINCH.
+    const dx = landmarks[THUMB_TIP].x - landmarks[INDEX_TIP].x;
+    const dy = landmarks[THUMB_TIP].y - landmarks[INDEX_TIP].y;
+    const pinchDistance = Math.hypot(dx, dy);
 
-    // Check all four fingers
-    const fingersCurled = FINGER_TIPS.every((tipIdx, i) =>
-        isFingerCurled(landmarks, tipIdx, FINGER_PIPS[i])
-    );
-    const fingersExtended = FINGER_TIPS.every((tipIdx, i) =>
-        !isFingerCurled(landmarks, tipIdx, FINGER_PIPS[i])
-    );
+    if (pinchDistance < 0.05) {
+        return 'PINCH';
+    }
 
-    // FIST — everything curled
-    if (thumbCurled && fingersCurled) {
+    // Check extension state of the four non-thumb fingers
+    const indexExtended = isExtended(landmarks, INDEX_TIP, INDEX_PIP);
+    const middleExtended = isExtended(landmarks, MIDDLE_TIP, MIDDLE_PIP);
+    const ringExtended = isExtended(landmarks, RING_TIP, RING_PIP);
+    const pinkyExtended = isExtended(landmarks, PINKY_TIP, PINKY_PIP);
+
+    // 2. POINT Detection: Only the index finger is extended, and middle, ring, pinky are curled.
+    if (indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
+        return 'POINT';
+    }
+
+    // 3. FIST Detection: All four fingers (index, middle, ring, pinky) are curled (not extended).
+    if (!indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
         return 'FIST';
     }
 
-    // OPEN_PALM — everything extended
-    if (!thumbCurled && fingersExtended) {
+    // 4. OPEN_PALM Detection: All four fingers (index, middle, ring, pinky) are extended.
+    if (indexExtended && middleExtended && ringExtended && pinkyExtended) {
         return 'OPEN_PALM';
     }
 
-    return null; // gesture not recognized
+    return null; // unrecognized gesture
 }
-
-// ─── Public API ──────────────────────────────────────────────────────
 
 /**
  * Starts continuous hand tracking on the given video element.
@@ -87,34 +83,43 @@ function classifyGesture(landmarks) {
  * @param {(gesture: string) => void} onGestureDetected — callback fired with gesture name
  */
 export function startHandTracking(videoElement, onGestureDetected) {
-    // `Hands` is loaded globally via CDN <script> in index.html
+    // `Hands` and `Camera` are loaded globally via CDNs in index.html
     const hands = new Hands({
-        locateFile: (file) =>
-            `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
     });
 
     hands.setOptions({
-        maxNumHands: 1,            // single hand for now
-        modelComplexity: 1,        // balanced accuracy/speed
+        maxNumHands: 1,
+        modelComplexity: 1,
         minDetectionConfidence: 0.7,
         minTrackingConfidence: 0.6
     });
 
-    // Process results on each frame
+    let lastGesture = null;
+    let lastGestureTime = 0;
+    const COOLDOWN_MS = 500;
+
+    // Process hand landmarks on each frame
     hands.onResults((results) => {
         if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
-            return; // no hand in frame
+            return; // no hand detected in the current frame
         }
 
         const landmarks = results.multiHandLandmarks[0];
         const gesture = classifyGesture(landmarks);
 
         if (gesture) {
-            onGestureDetected(gesture);
+            const now = performance.now();
+            // Fire if the gesture has changed, or if 500ms cooldown has elapsed for the same gesture
+            if (gesture !== lastGesture || (now - lastGestureTime >= COOLDOWN_MS)) {
+                lastGesture = gesture;
+                lastGestureTime = now;
+                onGestureDetected(gesture);
+            }
         }
     });
 
-    // Use MediaPipe's Camera utility to feed frames to the Hands model
+    // Feed frames from the webcam video element into the hands model
     const camera = new Camera(videoElement, {
         onFrame: async () => {
             await hands.send({ image: videoElement });
@@ -124,5 +129,5 @@ export function startHandTracking(videoElement, onGestureDetected) {
     });
 
     camera.start();
-    console.log('[gestures] Hand tracking started');
+    console.log('[gestures] MediaPipe Hands tracking started');
 }
