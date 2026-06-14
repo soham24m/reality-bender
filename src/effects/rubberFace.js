@@ -116,23 +116,33 @@ export function initRubberFace(videoElement) {
  * @param {Object} expressions - Map of expression name → confidence [0..1]
  */
 export function updateRubberFace(landmarks, expressions = {}) {
-    if (!initialized || !landmarks || landmarks.length < 468) return;
+    if (!initialized || !landmarks || landmarks.length < 468) {
+        // No landmarks: just clear the canvas so video shows through
+        if (effectCtx) effectCtx.clearRect(0, 0, effectCanvas.width, effectCanvas.height);
+        return;
+    }
+
+    // Guard: don't draw if video has no data yet (would paint black)
+    if (!videoEl || videoEl.readyState < 2 || videoEl.videoWidth === 0) {
+        if (effectCtx) effectCtx.clearRect(0, 0, effectCanvas.width, effectCanvas.height);
+        return;
+    }
 
     lastLandmarks = landmarks;
 
     const vw = effectCanvas.width;
     const vh = effectCanvas.height;
 
-    // 1. Capture current video frame to offscreen (un-mirrored, raw camera space)
-    offscreen.width  = videoEl.videoWidth  || 1280;
-    offscreen.height = videoEl.videoHeight || 720;
+    // 1. Capture current video frame to offscreen
+    //    Mirror it (scaleX -1) to match the CSS-mirrored webcam element
+    offscreen.width  = videoEl.videoWidth;
+    offscreen.height = videoEl.videoHeight;
     offCtx.save();
     offCtx.scale(-1, 1);
     offCtx.drawImage(videoEl, -offscreen.width, 0, offscreen.width, offscreen.height);
     offCtx.restore();
 
     // 2. Build target displacements from expression confidences
-    //    Displacements are in NORMALIZED space (0..1), converted to canvas px later
     resetTargets();
 
     const tiltR  = expressions['HEAD_TILT_RIGHT'] || 0;
@@ -143,31 +153,18 @@ export function updateRubberFace(landmarks, expressions = {}) {
     const browR  = expressions['RIGHT_BROW_RAISE'] || 0;
     const smile  = expressions['SMILE']            || 0;
 
-    // Cheek stretch right (head tilts right → right cheek pulled right)
     if (tiltR > 0.05) {
-        applyDisp(CHEEK_R,  tiltR * 0.055,  0,       vw, vh);
-        applyDisp(CHEEK_L, -tiltR * 0.02,   0,       vw, vh);
+        applyDisp(CHEEK_R,  tiltR * 0.055,  0,      vw, vh);
+        applyDisp(CHEEK_L, -tiltR * 0.02,   0,      vw, vh);
     }
-    // Cheek stretch left
     if (tiltL > 0.05) {
-        applyDisp(CHEEK_L, -tiltL * 0.055,  0,       vw, vh);
-        applyDisp(CHEEK_R,  tiltL * 0.02,   0,       vw, vh);
+        applyDisp(CHEEK_L, -tiltL * 0.055,  0,      vw, vh);
+        applyDisp(CHEEK_R,  tiltL * 0.02,   0,      vw, vh);
     }
-    // Chin/jaw drop
-    if (mouth > 0.05) {
-        applyDisp(CHIN,     0,   mouth * 0.07,  vw, vh);
-    }
-    if (jawDrop > 0.05) {
-        applyDisp(CHIN,     0,   jawDrop * 0.05, vw, vh); // extra for extreme jaw
-    }
-    // Brow raises
-    if (browL > 0.05) {
-        applyDisp(BROW_L,   0,  -browL * 0.045,  vw, vh);
-    }
-    if (browR > 0.05) {
-        applyDisp(BROW_R,   0,  -browR * 0.045,  vw, vh);
-    }
-    // Smile — corners pulled outward
+    if (mouth > 0.05)  { applyDisp(CHIN,    0,  mouth   * 0.07,  vw, vh); }
+    if (jawDrop > 0.05){ applyDisp(CHIN,    0,  jawDrop * 0.05,  vw, vh); }
+    if (browL > 0.05)  { applyDisp(BROW_L,  0, -browL   * 0.045, vw, vh); }
+    if (browR > 0.05)  { applyDisp(BROW_R,  0, -browR   * 0.045, vw, vh); }
     if (smile > 0.05) {
         applyDisp(MOUTH_L, -smile * 0.03, -smile * 0.015, vw, vh);
         applyDisp(MOUTH_R,  smile * 0.03, -smile * 0.015, vw, vh);
@@ -177,15 +174,13 @@ export function updateRubberFace(landmarks, expressions = {}) {
     for (let i = 0; i < 468; i++) {
         const dx = dispTarget[i].x - dispCurrent[i].x;
         const dy = dispTarget[i].y - dispCurrent[i].y;
-
         dispVelocity[i].x = (dispVelocity[i].x + dx * SPRING) * DAMPING;
         dispVelocity[i].y = (dispVelocity[i].y + dy * SPRING) * DAMPING;
-
         dispCurrent[i].x += dispVelocity[i].x;
         dispCurrent[i].y += dispVelocity[i].y;
     }
 
-    // 4. Render warped face triangles
+    // 4. Clear canvas then render warped face triangles only
     effectCtx.clearRect(0, 0, vw, vh);
     renderWarped(landmarks, vw, vh);
 }

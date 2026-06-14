@@ -12,17 +12,16 @@
  */
 export async function startCamera(videoElement) {
     try {
-        // Autoplay, playsinline, and muted attributes are required for iOS Safari and mobile browsers
         videoElement.setAttribute('autoplay', 'true');
         videoElement.setAttribute('playsinline', 'true');
         videoElement.setAttribute('muted', 'true');
-        videoElement.muted = true; // double check it is programmatically muted
+        videoElement.muted = true;
 
         const stream = await navigator.mediaDevices.getUserMedia({
             video: {
-                width: { ideal: 1280 },
+                width:  { ideal: 1280 },
                 height: { ideal: 720 },
-                facingMode: 'user',      // front camera on mobile
+                facingMode: 'user',
                 frameRate: { ideal: 30 }
             },
             audio: false
@@ -30,31 +29,28 @@ export async function startCamera(videoElement) {
 
         videoElement.srcObject = stream;
 
-        // Explicitly call play
-        try {
-            await videoElement.play();
-        } catch (playError) {
-            console.warn('[camera] videoElement.play() failed or was interrupted, waiting for user gesture', playError);
-        }
-
-        // Wait for the video to actually start playing before resolving
+        // Always wait for the video to actually have data
         return new Promise((resolve) => {
-            if (videoElement.readyState >= 3) { // HAVE_FUTURE_DATA
-                resolve(videoElement);
+            const onReady = () => {
+                videoElement.play()
+                    .then(() => {
+                        console.log(`[camera] camera playing — ${videoElement.videoWidth}×${videoElement.videoHeight}`);
+                        resolve(videoElement);
+                    })
+                    .catch((err) => {
+                        console.warn('[camera] play() rejected:', err);
+                        resolve(videoElement); // still resolve so app continues
+                    });
+            };
+
+            if (videoElement.readyState >= 2) { // HAVE_CURRENT_DATA or better
+                onReady();
             } else {
-                videoElement.onloadedmetadata = () => {
-                    videoElement.play().catch(() => {});
-                    console.log(
-                        `[camera] Webcam live — ${videoElement.videoWidth}×${videoElement.videoHeight}`
-                    );
-                    resolve(videoElement);
-                };
+                videoElement.addEventListener('loadeddata', onReady, { once: true });
             }
         });
     } catch (err) {
         console.error('[camera] Failed to access webcam:', err.message);
-        throw new Error(
-            'Webcam access denied or unavailable. Check browser permissions.'
-        );
+        throw new Error('Webcam access denied or unavailable. Check browser permissions.');
     }
 }

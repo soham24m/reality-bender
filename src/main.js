@@ -119,11 +119,11 @@ function tick() {
 
     if (isFaceTracked) {
         setTracking(true);
-
-        // Pass raw landmarks + current expression map to the warp engine
         updateRubberFace(lastLandmarks, lastExpressions);
     } else {
         setTracking(false);
+        // Pass null so rubberFace clears the canvas → video shows through
+        updateRubberFace(null, {});
     }
 
     requestAnimationFrame(tick);
