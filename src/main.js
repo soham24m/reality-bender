@@ -12,13 +12,243 @@ function resizeCanvas() {
   canvas.height = window.innerHeight
 }
 resizeCanvas()
-window.addEventListener('resize', resizeCanvas)
 
 // Step 3 — Update pill function:
 function updatePill(action, status) {
   pillAction.textContent = action
   pillStatus.textContent = status
 }
+
+// Global references for 3D elements accessed in onInteraction:
+let playerOrb
+let orbLight
+let enemyCube
+let purpleLight
+let blueLight
+
+function onInteraction(type, source) {
+  updatePill(type, source === 'hand' ? 'hand detected' : 'tracking')
+  
+  if (source === 'hand') {
+    if (type === 'Fist') {
+      // Orb flashes white and scales up briefly
+      playerOrb.material.emissive.setHex(0xffffff)
+      playerOrb.scale.set(1.5, 1.5, 1.5)
+      setTimeout(() => {
+        playerOrb.material.emissive.setHex(0x00aaff)
+        playerOrb.scale.set(1, 1, 1)
+      }, 200)
+      
+      // Push enemy back
+      const dir = new THREE.Vector3()
+      dir.subVectors(enemyCube.position, playerOrb.position).normalize()
+      enemyCube.position.addScaledVector(dir, 3)
+    }
+    
+    if (type === 'Open Palm') {
+      // Orb turns green — shield mode
+      playerOrb.material.emissive.setHex(0x00ff44)
+      orbLight.color.setHex(0x00ff44)
+      setTimeout(() => {
+        playerOrb.material.emissive.setHex(0x00aaff)
+        orbLight.color.setHex(0x00ffff)
+      }, 1000)
+    }
+    
+    if (type === 'Pointing') {
+      // Orb turns yellow — laser mode
+      playerOrb.material.emissive.setHex(0xffff00)
+      orbLight.color.setHex(0xffff00)
+      // Move enemy back fast
+      const dir = new THREE.Vector3()
+      dir.subVectors(enemyCube.position, playerOrb.position).normalize()
+      enemyCube.position.addScaledVector(dir, 5)
+      setTimeout(() => {
+        playerOrb.material.emissive.setHex(0x00aaff)
+        orbLight.color.setHex(0x00ffff)
+      }, 300)
+    }
+    
+    if (type === 'Pinch') {
+      // Pull enemy toward player
+      const dir = new THREE.Vector3()
+      dir.subVectors(playerOrb.position, enemyCube.position).normalize()
+      enemyCube.position.addScaledVector(dir, 4)
+    }
+  }
+  
+  if (source === 'face') {
+    if (type === 'Mouth open') {
+      // Enemy freezes for 1 second
+      enemyCube.material.emissive.setHex(0x0000ff)
+      setTimeout(() => {
+        enemyCube.material.emissive.setHex(0xff0000)
+      }, 1000)
+    }
+    if (type === 'Smiling') {
+      // All lights pulse bright
+      purpleLight.intensity = 8
+      blueLight.intensity = 8
+      setTimeout(() => {
+        purpleLight.intensity = 3
+        blueLight.intensity = 3
+      }, 500)
+    }
+  }
+}
+
+// SCENE SETUP:
+const scene = new THREE.Scene()
+scene.background = new THREE.Color(0x000000)
+scene.fog = new THREE.Fog(0x000000, 15, 40)
+
+const camera3D = new THREE.PerspectiveCamera(
+  75, window.innerWidth / window.innerHeight, 0.1, 100
+)
+camera3D.position.set(0, 3, 8)
+camera3D.lookAt(0, 0, 0)
+
+const renderer = new THREE.WebGLRenderer({ antialias: true })
+renderer.setSize(window.innerWidth, window.innerHeight)
+renderer.shadowMap.enabled = true
+renderer.setPixelRatio(window.devicePixelRatio)
+
+// Insert renderer canvas BETWEEN video and overlay
+const threeCanvas = renderer.domElement
+threeCanvas.style.position = 'fixed'
+threeCanvas.style.top = '0'
+threeCanvas.style.left = '0'
+threeCanvas.style.zIndex = '1'
+threeCanvas.style.pointerEvents = 'none'
+document.body.insertBefore(threeCanvas, document.getElementById('overlay'))
+
+// Move overlay canvas z-index to 2
+document.getElementById('overlay').style.zIndex = '2'
+
+// ARENA FLOOR:
+const floorGeometry = new THREE.PlaneGeometry(30, 30, 20, 20)
+const floorMaterial = new THREE.MeshStandardMaterial({
+  color: 0x0a0a1a,
+  wireframe: false,
+  roughness: 0.8,
+  metalness: 0.2
+})
+const floor = new THREE.Mesh(floorGeometry, floorMaterial)
+floor.rotation.x = -Math.PI / 2
+floor.position.y = -1
+floor.receiveShadow = true
+scene.add(floor)
+
+// GRID OVERLAY ON FLOOR:
+const gridHelper = new THREE.GridHelper(30, 30, 0x1a1a4a, 0x1a1a4a)
+gridHelper.position.y = -0.99
+scene.add(gridHelper)
+
+// ARENA WALLS (4 glowing edge lines):
+const edgeMaterial = new THREE.LineBasicMaterial({ 
+  color: 0x4444ff, 
+  transparent: true, 
+  opacity: 0.4 
+})
+const arenaSize = 10
+const corners = [
+  [-arenaSize, -1, -arenaSize],
+  [arenaSize, -1, -arenaSize],
+  [arenaSize, -1, arenaSize],
+  [-arenaSize, -1, arenaSize],
+  [-arenaSize, -1, -arenaSize]
+]
+const edgePoints = corners.map(c => new THREE.Vector3(...c))
+const edgeGeometry = new THREE.BufferGeometry().setFromPoints(edgePoints)
+const arenaEdge = new THREE.Line(edgeGeometry, edgeMaterial)
+scene.add(arenaEdge)
+
+// LIGHTING:
+const ambientLight = new THREE.AmbientLight(0x111133, 2)
+scene.add(ambientLight)
+
+purpleLight = new THREE.PointLight(0x6600ff, 3, 20)
+purpleLight.position.set(-5, 5, -5)
+scene.add(purpleLight)
+
+blueLight = new THREE.PointLight(0x0044ff, 3, 20)
+blueLight.position.set(5, 5, 5)
+scene.add(blueLight)
+
+const centerLight = new THREE.PointLight(0xffffff, 1, 10)
+centerLight.position.set(0, 3, 0)
+scene.add(centerLight)
+
+// PLAYER ORB:
+const orbGeometry = new THREE.SphereGeometry(0.4, 32, 32)
+const orbMaterial = new THREE.MeshStandardMaterial({
+  color: 0x00ffff,
+  emissive: 0x00aaff,
+  emissiveIntensity: 2,
+  roughness: 0.1,
+  metalness: 0.9
+})
+playerOrb = new THREE.Mesh(orbGeometry, orbMaterial)
+playerOrb.position.set(0, 0, 3)
+scene.add(playerOrb)
+
+// Orb glow light
+orbLight = new THREE.PointLight(0x00ffff, 2, 5)
+playerOrb.add(orbLight)
+
+// ENEMY CUBE:
+const enemyGeometry = new THREE.BoxGeometry(0.8, 0.8, 0.8)
+const enemyMaterial = new THREE.MeshStandardMaterial({
+  color: 0xff2200,
+  emissive: 0xff0000,
+  emissiveIntensity: 1,
+  roughness: 0.3,
+  metalness: 0.7
+})
+enemyCube = new THREE.Mesh(enemyGeometry, enemyMaterial)
+enemyCube.position.set(0, 0, -5)
+scene.add(enemyCube)
+
+// Enemy glow light
+const enemyLight = new THREE.PointLight(0xff2200, 2, 4)
+enemyCube.add(enemyLight)
+
+// RESIZE HANDLER:
+window.addEventListener('resize', () => {
+  camera3D.aspect = window.innerWidth / window.innerHeight
+  camera3D.updateProjectionMatrix()
+  renderer.setSize(window.innerWidth, window.innerHeight)
+  resizeCanvas()
+})
+
+// ANIMATION LOOP:
+let frameCount = 0
+function animate() {
+  requestAnimationFrame(animate)
+  frameCount++
+  
+  // Orb hover animation
+  playerOrb.position.y = Math.sin(frameCount * 0.03) * 0.2
+  
+  // Orb slow rotation
+  playerOrb.rotation.y += 0.01
+  
+  // Enemy slow rotation
+  enemyCube.rotation.x += 0.008
+  enemyCube.rotation.y += 0.012
+  
+  // Enemy slowly moves toward player
+  const dir = new THREE.Vector3()
+  dir.subVectors(playerOrb.position, enemyCube.position).normalize()
+  enemyCube.position.addScaledVector(dir, 0.008)
+  
+  // Pulse lights
+  const pulse = Math.sin(frameCount * 0.05) * 0.5 + 1
+  orbLight.intensity = pulse * 2
+  
+  renderer.render(scene, camera3D)
+}
+animate()
 
 // Step 4 — Start webcam:
 async function startCamera() {
@@ -87,8 +317,7 @@ hands.onResults((results) => {
   
   if (gesture) {
     lastGestureTime = now
-    updatePill(gesture, 'hand detected')
-    console.log('HAND:', gesture)
+    onInteraction(gesture, 'hand')
   }
 })
 
@@ -159,8 +388,7 @@ faceMesh.onResults((results) => {
   
   if (expression) {
     lastFaceEventTime = now
-    updatePill(expression, 'tracking')
-    console.log('FACE:', expression)
+    onInteraction(expression, 'face')
   } else {
     updatePill('Neutral', 'tracking')
   }
