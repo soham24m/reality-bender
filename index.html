@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Reality Bender</title>
   <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
       padding: 0;
@@ -15,6 +16,7 @@
       height: 100vh;
       overflow: hidden;
       background: #000;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     #webcam {
       position: fixed;
@@ -26,55 +28,122 @@
       transform: scaleX(-1);
       z-index: 0;
     }
+    canvas.three-canvas {
+      background: transparent !important;
+    }
     #overlay {
       position: fixed;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      z-index: 1;
+      z-index: 2;
       background: transparent;
+      pointer-events: none;
     }
+    #hud {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .hp-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .hp-label {
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 10px;
+      width: 28px;
+    }
+    .hp-track {
+      width: 140px;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+    }
+    .hp-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 300ms ease;
+    }
+    #player-hp-bar { width: 100%; background: #00ff88; }
+    #enemy-hp-bar { width: 100%; background: #ff2200; }
     #pill {
       position: fixed;
       bottom: 28px;
       left: 28px;
       z-index: 10;
-      background: rgba(255,255,255,0.08);
-      backdrop-filter: blur(20px) saturate(180%);
-      -webkit-backdrop-filter: blur(20px) saturate(180%);
-      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 20px;
       padding: 10px 20px;
       display: flex;
       align-items: center;
       gap: 10px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      transition: opacity 150ms ease;
     }
     #pill-dot {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: #78ffa0;
-      display: inline-block;
-      box-shadow: 0 0 8px rgba(120,255,160,0.8);
+      background: rgba(255, 255, 255, 0.25);
     }
-    .pill-content {
-      display: flex;
-      flex-direction: column;
+    #pill-dot.live {
+      background: #78ffa0;
+      box-shadow: 0 0 8px rgba(120, 255, 160, 0.8);
     }
     #pill-action {
       font-size: 13px;
-      color: rgba(255,255,255,0.9);
+      color: rgba(255, 255, 255, 0.9);
       font-weight: 500;
       margin: 0;
     }
     #pill-status {
       font-size: 10px;
-      color: rgba(255,255,255,0.35);
+      color: rgba(255, 255, 255, 0.35);
       margin: 0;
+    }
+    #cooldown-bar-wrap {
+      position: fixed;
+      bottom: 80px;
+      left: 28px;
+      width: 130px;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 2px;
+      z-index: 10;
+      overflow: hidden;
+    }
+    #cooldown-bar {
+      width: 0%;
+      height: 100%;
+      background: rgba(0, 200, 255, 0.7);
+      border-radius: 2px;
+      transform-origin: left;
+      transition: width 50ms linear;
+    }
+    #gesture-confirm {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 20;
+      font-family: -apple-system, sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      color: white;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0;
+      pointer-events: none;
+      text-shadow: 0 0 20px rgba(0, 200, 255, 0.8);
+      transition: opacity 100ms ease;
     }
   </style>
 </head>
@@ -82,19 +151,36 @@
   <video id="webcam" autoplay muted playsinline></video>
   <canvas id="overlay"></canvas>
 
-  <div id="pill">
-    <span id="pill-dot"></span>
-    <div class="pill-content">
-      <p id="pill-action">Ready</p>
-      <p id="pill-status">searching...</p>
+  <div id="hud">
+    <div class="hp-row">
+      <span class="hp-label">YOU</span>
+      <div class="hp-track"><div id="player-hp-bar" class="hp-fill"></div></div>
+    </div>
+    <div class="hp-row">
+      <span class="hp-label">ENY</span>
+      <div class="hp-track"><div id="enemy-hp-bar" class="hp-fill"></div></div>
     </div>
   </div>
+
+  <div id="pill">
+    <span id="pill-dot"></span>
+    <div>
+      <p id="pill-action">Ready</p>
+      <p id="pill-status">waiting for camera</p>
+    </div>
+  </div>
+
+  <div id="cooldown-bar-wrap">
+    <div id="cooldown-bar"></div>
+  </div>
+
+  <div id="gesture-confirm"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
-  <script src="src/main.js" type="module"></script>
+  <script src="src/main.js?v=5" type="module"></script>
 </body>
 </html>
