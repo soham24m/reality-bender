@@ -27,6 +27,8 @@
       object-fit: cover;
       transform: scaleX(-1);
       z-index: 0;
+      opacity: 0;
+      pointer-events: none;
     }
     canvas.three-canvas {
       background: transparent !important;
@@ -40,6 +42,19 @@
       z-index: 2;
       background: transparent;
       pointer-events: none;
+    }
+    #score-display {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      font-family: -apple-system, sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.35);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
     }
     #hud {
       position: fixed;
@@ -145,11 +160,30 @@
       text-shadow: 0 0 20px rgba(0, 200, 255, 0.8);
       transition: opacity 100ms ease;
     }
+    #wave-announce {
+      position: fixed;
+      top: 35%;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      font-family: -apple-system, sans-serif;
+      font-size: 32px;
+      font-weight: 700;
+      color: white;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      opacity: 0;
+      pointer-events: none;
+      text-align: center;
+      text-shadow: 0 0 40px rgba(100, 100, 255, 0.9);
+    }
   </style>
 </head>
 <body>
   <video id="webcam" autoplay muted playsinline></video>
   <canvas id="overlay"></canvas>
+
+  <div id="score-display">Score: 0</div>
 
   <div id="hud">
     <div class="hp-row">
@@ -175,12 +209,13 @@
   </div>
 
   <div id="gesture-confirm"></div>
+  <div id="wave-announce"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
-  <script src="src/main.js?v=5" type="module"></script>
+  <script src="src/main.js?v=6" type="module"></script>
 </body>
 </html>

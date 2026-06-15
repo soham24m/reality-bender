@@ -6,17 +6,70 @@ const pillAction = document.getElementById('pill-action')
 const pillStatus = document.getElementById('pill-status')
 const pillDot = document.getElementById('pill-dot')
 
-let enemyHP = 100
+// Enemy management
+const enemies = []
+let currentWave = 0
+let waveInProgress = false
 let playerHP = 100
-let enemyDefeated = false
-let enemyFrozen = false
-let enemyFrozenUntil = 0
+let playerDefeated = false
+let enemiesFrozenUntil = 0
+let score = 0
+
+const ENEMY_TYPES = {
+  DRONE: {
+    color: 0x00ff44,
+    emissive: 0x00aa00,
+    size: 0.4,
+    hp: 30,
+    speed: 0.012,
+    damage: 3,
+    geometry: 'sphere',
+    points: 10
+  },
+  FIGHTER: {
+    color: 0xff2200,
+    emissive: 0xff0000,
+    size: 0.6,
+    hp: 60,
+    speed: 0.02,
+    damage: 6,
+    geometry: 'octahedron',
+    points: 25
+  },
+  ELITE: {
+    color: 0xaa00ff,
+    emissive: 0x6600ff,
+    size: 0.8,
+    hp: 120,
+    speed: 0.015,
+    damage: 12,
+    geometry: 'icosahedron',
+    points: 50
+  }
+}
+
+const WAVES = [
+  { enemies: ['DRONE', 'DRONE', 'DRONE'] },
+  { enemies: ['DRONE', 'DRONE', 'FIGHTER', 'FIGHTER'] },
+  { enemies: ['FIGHTER', 'FIGHTER', 'FIGHTER', 'ELITE'] },
+  { enemies: ['ELITE', 'ELITE', 'FIGHTER', 'FIGHTER', 'DRONE'] },
+  { enemies: ['ELITE', 'ELITE', 'ELITE', 'FIGHTER', 'FIGHTER'] }
+]
 
 function updateHPBars() {
   document.getElementById('player-hp-bar').style.width = playerHP + '%'
-  document.getElementById('enemy-hp-bar').style.width = enemyHP + '%'
+  const active = enemies.filter(e => !e.defeated).length
+  const total = enemies.length || 1
+  document.getElementById('enemy-hp-bar').style.width = (active / total * 100) + '%'
 }
 updateHPBars()
+
+function flashScreenRed() {
+  document.body.style.boxShadow = 'inset 0 0 120px rgba(255,0,0,0.4)'
+  setTimeout(() => {
+    document.body.style.boxShadow = 'none'
+  }, 300)
+}
 
 function resizeCanvas() {
   canvas.width = window.innerWidth
@@ -30,7 +83,6 @@ function updatePill(action, status) {
   pillStatus.textContent = status
 }
 
-// ─── Prompt 3: gesture confirmation flash ────────────────────────────────────
 function showGestureConfirm(text, color = '#00ccff') {
   const el = document.getElementById('gesture-confirm')
   el.textContent = text
@@ -47,7 +99,198 @@ function showGestureConfirm(text, color = '#00ccff') {
   }, 600)
 }
 
-// ─── Prompt 4: action cooldowns ──────────────────────────────────────────────
+function showWaveAnnounce(text, subtext = '') {
+  const el = document.getElementById('wave-announce')
+  el.innerHTML = text +
+    (subtext ? '<br><span style="font-size:14px;opacity:0.5;letter-spacing:0.1em">' +
+    subtext + '</span>' : '')
+  el.style.opacity = '1'
+  el.style.transform = 'translateX(-50%) scale(1.1)'
+  el.style.transition = 'all 300ms cubic-bezier(0.4,0,0.2,1)'
+
+  clearTimeout(showWaveAnnounce._t)
+  showWaveAnnounce._t = setTimeout(() => {
+    el.style.opacity = '0'
+    el.style.transform = 'translateX(-50%) scale(1)'
+  }, 2000)
+}
+
+function addScore(points) {
+  score += points
+  document.getElementById('score-display').textContent = 'Score: ' + score.toLocaleString()
+}
+
+function spawnParticles(position, color) {
+  const particleCount = 40
+  const geometry = new THREE.BufferGeometry()
+  const positions = new Float32Array(particleCount * 3)
+  const velocities = []
+
+  for (let i = 0; i < particleCount; i++) {
+    positions[i * 3] = position.x
+    positions[i * 3 + 1] = position.y
+    positions[i * 3 + 2] = position.z
+
+    velocities.push({
+      x: (Math.random() - 0.5) * 0.3,
+      y: Math.random() * 0.2,
+      z: (Math.random() - 0.5) * 0.3
+    })
+  }
+
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+
+  const material = new THREE.PointsMaterial({
+    color: color,
+    size: 0.15,
+    transparent: true,
+    opacity: 1
+  })
+
+  const particles = new THREE.Points(geometry, material)
+  scene.add(particles)
+
+  let life = 0
+  const maxLife = 60
+
+  function animateParticles() {
+    if (life >= maxLife) {
+      scene.remove(particles)
+      geometry.dispose()
+      material.dispose()
+      return
+    }
+
+    const pos = geometry.attributes.position.array
+    for (let i = 0; i < particleCount; i++) {
+      pos[i * 3] += velocities[i].x
+      pos[i * 3 + 1] += velocities[i].y
+      pos[i * 3 + 2] += velocities[i].z
+      velocities[i].y -= 0.005
+    }
+    geometry.attributes.position.needsUpdate = true
+    material.opacity = 1 - (life / maxLife)
+    life++
+    requestAnimationFrame(animateParticles)
+  }
+
+  animateParticles()
+}
+
+function createEnemy(type) {
+  const config = ENEMY_TYPES[type]
+
+  let geo
+  if (config.geometry === 'sphere')
+    geo = new THREE.SphereGeometry(config.size, 16, 16)
+  else if (config.geometry === 'octahedron')
+    geo = new THREE.OctahedronGeometry(config.size, 0)
+  else
+    geo = new THREE.IcosahedronGeometry(config.size, 0)
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: config.color,
+    emissive: config.emissive,
+    emissiveIntensity: 2,
+    roughness: 0.2,
+    metalness: 0.8
+  })
+
+  const mesh = new THREE.Mesh(geo, mat)
+
+  const wireMat = new THREE.MeshBasicMaterial({
+    color: config.color,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.3
+  })
+  const wireMesh = new THREE.Mesh(geo.clone(), wireMat)
+  mesh.add(wireMesh)
+
+  const light = new THREE.PointLight(config.color, 2, 5)
+  mesh.add(light)
+
+  const angle = Math.random() * Math.PI * 2
+  const radius = 8 + Math.random() * 2
+  mesh.position.set(
+    Math.cos(angle) * radius,
+    0,
+    Math.sin(angle) * radius
+  )
+
+  scene.add(mesh)
+
+  enemies.push({
+    mesh,
+    type,
+    hp: config.hp,
+    maxHp: config.hp,
+    speed: config.speed,
+    damage: config.damage,
+    points: config.points,
+    frameOffset: Math.random() * 100,
+    defeated: false
+  })
+
+  updateHPBars()
+}
+
+function spawnWave(waveIndex) {
+  if (waveIndex >= WAVES.length) {
+    showWaveAnnounce('VICTORY', 'Final score: ' + score)
+    updatePill('Victory!', 'All waves cleared')
+    return
+  }
+  currentWave = waveIndex
+  waveInProgress = true
+
+  showWaveAnnounce(
+    'WAVE ' + (waveIndex + 1),
+    WAVES[waveIndex].enemies.length + ' enemies'
+  )
+
+  const wave = WAVES[waveIndex]
+  wave.enemies.forEach((type, i) => {
+    setTimeout(() => createEnemy(type), i * 800)
+  })
+
+  updatePill('Wave ' + (waveIndex + 1),
+    wave.enemies.length + ' enemies incoming')
+}
+
+function defeatEnemy(enemy) {
+  enemy.defeated = true
+  spawnParticles(enemy.mesh.position, enemy.mesh.material.color)
+  addScore(enemy.points)
+  scene.remove(enemy.mesh)
+  updateHPBars()
+}
+
+function damageAllEnemies(amount, range = 999) {
+  enemies.forEach(enemy => {
+    if (enemy.defeated) return
+    const dist = enemy.mesh.position.distanceTo(playerOrb.position)
+    if (dist <= range) {
+      enemy.hp -= amount
+      if (enemy.hp <= 0) defeatEnemy(enemy)
+    }
+  })
+  updateHPBars()
+}
+
+function pushEnemiesInRange(range, force) {
+  enemies.forEach(enemy => {
+    if (enemy.defeated) return
+    const dist = enemy.mesh.position.distanceTo(playerOrb.position)
+    if (dist <= range) {
+      const dir = new THREE.Vector3()
+      dir.subVectors(enemy.mesh.position, playerOrb.position).normalize()
+      enemy.mesh.position.addScaledVector(dir, force)
+    }
+  })
+}
+
+// ─── Cooldowns ───────────────────────────────────────────────────────────────
 const actionCooldowns = {}
 const COOLDOWN_TIMES = {
   'Fist': 1200,
@@ -73,7 +316,7 @@ function setCooldown(gesture) {
 }
 
 // ─── 3D refs ─────────────────────────────────────────────────────────────────
-let playerOrb, orbLight, orbShell, enemyCube, enemyWire, purpleLight, blueLight, stars
+let playerOrb, orbLight, orbShell, purpleLight, blueLight, stars, scene
 
 function onInteraction(type, source) {
   if (isOnCooldown(type)) return
@@ -84,22 +327,19 @@ function onInteraction(type, source) {
   if (source === 'hand') {
     if (type === 'Fist') {
       showGestureConfirm('SHOCKWAVE', '#ffffff')
-      enemyHP = Math.max(0, enemyHP - 20)
-      updateHPBars()
+      damageAllEnemies(25, 5)
+      pushEnemiesInRange(5, 3)
       playerOrb.material.emissive.setHex(0xffffff)
       playerOrb.scale.set(1.5, 1.5, 1.5)
       setTimeout(() => {
         playerOrb.material.emissive.setHex(0x00ccff)
         playerOrb.scale.set(1, 1, 1)
       }, 200)
-      const dir = new THREE.Vector3()
-      dir.subVectors(enemyCube.position, playerOrb.position).normalize()
-      enemyCube.position.addScaledVector(dir, 3)
     }
 
     if (type === 'Open Palm') {
       showGestureConfirm('SHIELD', '#00ff88')
-      playerHP = Math.min(100, playerHP + 10)
+      playerHP = Math.min(100, playerHP + 15)
       updateHPBars()
       playerOrb.material.emissive.setHex(0x00ff44)
       orbLight.color.setHex(0x00ff44)
@@ -111,13 +351,10 @@ function onInteraction(type, source) {
 
     if (type === 'Pointing') {
       showGestureConfirm('LASER', '#ffff00')
-      enemyHP = Math.max(0, enemyHP - 15)
-      updateHPBars()
+      damageAllEnemies(20, 8)
+      pushEnemiesInRange(8, 5)
       playerOrb.material.emissive.setHex(0xffff00)
       orbLight.color.setHex(0xffff00)
-      const dir = new THREE.Vector3()
-      dir.subVectors(enemyCube.position, playerOrb.position).normalize()
-      enemyCube.position.addScaledVector(dir, 5)
       setTimeout(() => {
         playerOrb.material.emissive.setHex(0x00ccff)
         orbLight.color.setHex(0x00ffff)
@@ -126,13 +363,10 @@ function onInteraction(type, source) {
 
     if (type === 'Gun') {
       showGestureConfirm('FIRE', '#ff6600')
-      enemyHP = Math.max(0, enemyHP - 25)
-      updateHPBars()
+      damageAllEnemies(30, 6)
+      pushEnemiesInRange(6, 7)
       playerOrb.material.emissive.setHex(0xff6600)
       orbLight.color.setHex(0xff6600)
-      const dir = new THREE.Vector3()
-      dir.subVectors(enemyCube.position, playerOrb.position).normalize()
-      enemyCube.position.addScaledVector(dir, 7)
       setTimeout(() => {
         playerOrb.material.emissive.setHex(0x00ccff)
         orbLight.color.setHex(0x00ffff)
@@ -147,9 +381,10 @@ function onInteraction(type, source) {
   if (source === 'face') {
     if (type === 'Mouth open') {
       showGestureConfirm('FREEZE', '#0088ff')
-      enemyFrozen = true
-      enemyFrozenUntil = Date.now() + 1200
-      enemyCube.material.emissive.setHex(0x0000ff)
+      enemiesFrozenUntil = Date.now() + 1200
+      enemies.forEach(enemy => {
+        if (!enemy.defeated) enemy.mesh.material.emissive.setHex(0x0000ff)
+      })
     }
 
     if (type === 'Smiling') {
@@ -174,8 +409,8 @@ function onInteraction(type, source) {
   }
 }
 
-// ─── Prompt 1: Three.js — transparent overlay on camera ──────────────────────
-const scene = new THREE.Scene()
+// ─── Three.js scene ──────────────────────────────────────────────────────────
+scene = new THREE.Scene()
 
 const starGeometry = new THREE.BufferGeometry()
 const starPositions = []
@@ -199,7 +434,7 @@ camera3D.position.set(0, 4, 10)
 camera3D.lookAt(0, 0, -2)
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-renderer.setClearColor(0x000000, 0)
+renderer.setClearColor(0x000000, 1)
 renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.setPixelRatio(window.devicePixelRatio)
 renderer.shadowMap.enabled = true
@@ -289,22 +524,7 @@ scene.add(orbShell)
 orbLight = new THREE.PointLight(0x00ffff, 2, 5)
 playerOrb.add(orbLight)
 
-enemyCube = new THREE.Mesh(
-  new THREE.OctahedronGeometry(0.6, 0),
-  new THREE.MeshStandardMaterial({
-    color: 0xff1100, emissive: 0xff0000, emissiveIntensity: 2,
-    roughness: 0.2, metalness: 0.8
-  })
-)
-enemyCube.position.set(0, 0, -5)
-scene.add(enemyCube)
-
-enemyWire = new THREE.Mesh(
-  new THREE.OctahedronGeometry(0.65, 0),
-  new THREE.MeshBasicMaterial({ color: 0xff4400, wireframe: true, transparent: true, opacity: 0.4 })
-)
-enemyCube.add(enemyWire)
-enemyCube.add(new THREE.PointLight(0xff2200, 2, 4))
+setTimeout(() => spawnWave(0), 2000)
 
 window.addEventListener('resize', () => {
   camera3D.aspect = window.innerWidth / window.innerHeight
@@ -318,7 +538,6 @@ function animate() {
   requestAnimationFrame(animate)
   frameCount++
 
-  // Prompt 4: cooldown bar animation
   const bar = document.getElementById('cooldown-bar')
   const now = Date.now()
   const mostRecent = Object.entries(actionCooldowns).sort((a, b) => b[1] - a[1])[0]
@@ -334,9 +553,14 @@ function animate() {
     bar.style.width = '100%'
   }
 
-  if (enemyFrozen && Date.now() >= enemyFrozenUntil) {
-    enemyFrozen = false
-    enemyCube.material.emissive.setHex(0xff0000)
+  if (enemiesFrozenUntil && now >= enemiesFrozenUntil) {
+    enemiesFrozenUntil = 0
+    enemies.forEach(enemy => {
+      if (!enemy.defeated) {
+        const config = ENEMY_TYPES[enemy.type]
+        enemy.mesh.material.emissive.setHex(config.emissive)
+      }
+    })
   }
 
   stars.rotation.y += 0.0002
@@ -346,65 +570,46 @@ function animate() {
   orbShell.rotation.y -= 0.02
   orbShell.rotation.x += 0.01
 
-  if (!enemyDefeated && !enemyFrozen) {
-    const distToPlayer = enemyCube.position.distanceTo(playerOrb.position)
+  if (!playerDefeated) {
+    const frozen = enemiesFrozenUntil && now < enemiesFrozenUntil
 
-    if (distToPlayer > 6) {
-      const angle = frameCount * 0.01
-      enemyCube.position.x += Math.sin(angle) * 0.02
-      enemyCube.position.z += Math.cos(angle) * 0.01
-      const dir = new THREE.Vector3()
-      dir.subVectors(playerOrb.position, enemyCube.position).normalize()
-      enemyCube.position.addScaledVector(dir, 0.01)
-    } else if (distToPlayer > 3) {
-      const dir = new THREE.Vector3()
-      dir.subVectors(playerOrb.position, enemyCube.position).normalize()
-      enemyCube.position.addScaledVector(dir, 0.025)
-      enemyCube.position.x += Math.sin(frameCount * 0.1) * 0.04
-    } else {
-      enemyCube.position.x += (Math.random() - 0.5) * 0.1
-      enemyCube.position.z += (Math.random() - 0.5) * 0.1
-      if (frameCount % 10 === 0) {
-        enemyCube.material.emissiveIntensity =
-          enemyCube.material.emissiveIntensity === 4 ? 1 : 4
-      }
-      if (frameCount % 60 === 0) {
-        playerHP = Math.max(0, playerHP - 5)
-        updateHPBars()
-        updatePill('Taking damage!', 'HP: ' + playerHP)
-        document.body.style.boxShadow = 'inset 0 0 100px rgba(255,0,0,0.5)'
-        setTimeout(() => { document.body.style.boxShadow = 'none' }, 300)
-      }
-    }
+    enemies.forEach(enemy => {
+      if (enemy.defeated || frozen) return
 
-    enemyCube.rotation.x += 0.015
-    enemyCube.rotation.y += 0.02
-    enemyCube.rotation.z += 0.008
-    enemyWire.rotation.y -= 0.03
+      const dist = enemy.mesh.position.distanceTo(playerOrb.position)
 
-    if (enemyHP <= 0 && !enemyDefeated) {
-      enemyDefeated = true
-      let scale = 1
-      const explode = setInterval(() => {
-        scale += 0.15
-        enemyCube.scale.set(scale, scale, scale)
-        enemyCube.material.emissiveIntensity = scale * 3
-        if (scale > 4) {
-          scene.remove(enemyCube)
-          clearInterval(explode)
-          showGestureConfirm('VICTORY', '#00ff88')
-          updatePill('Enemy defeated!', 'Wave complete')
-          setTimeout(() => {
-            enemyCube.position.set((Math.random() - 0.5) * 8, 0, -6)
-            enemyCube.scale.set(1, 1, 1)
-            enemyCube.material.emissiveIntensity = 2
-            scene.add(enemyCube)
-            enemyHP = 100
-            enemyDefeated = false
-            updateHPBars()
-          }, 3000)
+      if (dist > 3) {
+        const dir = new THREE.Vector3()
+        dir.subVectors(playerOrb.position, enemy.mesh.position).normalize()
+        enemy.mesh.position.addScaledVector(dir, enemy.speed)
+        enemy.mesh.position.x +=
+          Math.sin((frameCount + enemy.frameOffset) * 0.08) * 0.03
+      } else {
+        enemy.mesh.position.x += (Math.random() - 0.5) * 0.08
+        enemy.mesh.position.z += (Math.random() - 0.5) * 0.08
+
+        if (frameCount % 60 === 0 && !playerDefeated) {
+          playerHP = Math.max(0, playerHP - enemy.damage)
+          updateHPBars()
+          flashScreenRed()
+          if (playerHP <= 0) {
+            playerDefeated = true
+            updatePill('Defeated', 'Game over')
+          }
         }
-      }, 50)
+      }
+
+      enemy.mesh.rotation.x += 0.012
+      enemy.mesh.rotation.y += 0.018
+    })
+
+    if (waveInProgress &&
+        enemies.length > 0 &&
+        enemies.every(e => e.defeated)) {
+      waveInProgress = false
+      enemies.length = 0
+      updateHPBars()
+      setTimeout(() => spawnWave(currentWave + 1), 2500)
     }
   }
 
@@ -413,7 +618,7 @@ function animate() {
 }
 animate()
 
-// ─── Prompt 2: gesture stability engine ──────────────────────────────────────
+// ─── Gesture stability engine ────────────────────────────────────────────────
 const gestureBuffer = []
 const BUFFER_SIZE = 8
 let currentLockedGesture = null
@@ -464,7 +669,6 @@ function submitRawGesture(gesture, source) {
   }
 }
 
-// ─── Camera ──────────────────────────────────────────────────────────────────
 async function startCamera() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -480,7 +684,6 @@ async function startCamera() {
   }
 }
 
-// ─── Hand detection ──────────────────────────────────────────────────────────
 const hands = new Hands({
   locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
 })
@@ -513,7 +716,6 @@ hands.onResults((results) => {
   if (gesture) submitRawGesture(gesture, 'hand')
 })
 
-// ─── Face detection (no blink/wink/brows) ────────────────────────────────────
 const faceMesh = new FaceMesh({
   locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
 })
