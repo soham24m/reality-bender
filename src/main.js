@@ -331,9 +331,11 @@ function onInteraction(type, source) {
       pushEnemiesInRange(5, 3)
       playerOrb.material.emissive.setHex(0xffffff)
       playerOrb.scale.set(1.5, 1.5, 1.5)
+      triggerShake(10, 250)
+      fireProjectile(0xffffff, 30, 0.32)
       setTimeout(() => {
-        playerOrb.material.emissive.setHex(0x00ccff)
-        playerOrb.scale.set(1, 1, 1)
+      playerOrb.material.emissive.setHex(0x00ccff)
+      playerOrb.scale.set(1, 1, 1)
       }, 200)
     }
 
