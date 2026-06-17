@@ -325,18 +325,210 @@ function onInteraction(type, source) {
   updatePill(type, source === 'hand' ? 'hand detected' : 'tracking')
 
   if (source === 'hand') {
-    if (type === 'Fist') {
-      showGestureConfirm('SHOCKWAVE', '#ffffff')
-      damageAllEnemies(25, 5)
-      pushEnemiesInRange(5, 3)
-      playerOrb.material.emissive.setHex(0xffffff)
-      playerOrb.scale.set(1.5, 1.5, 1.5)
-      triggerShake(10, 250)
-      fireProjectile(0xffffff, 30, 0.32)
-      setTimeout(() => {
-      playerOrb.material.emissive.setHex(0x00ccff)
-      playerOrb.scale.set(1, 1, 1)
-      }, 200)
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.4
+    })
+
+    const controlsHtml = `<div id="controls-hint" style="
+      position: fixed; bottom: 28px; right: 24px;
+      z-index: 10;
+      background: rgba(255,255,255,0.06);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 12px 16px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.35);
+      letter-spacing: 0.05em;
+      line-height: 2;
+    ">
+      <div style="color:rgba(255,255,255,0.6);margin-bottom:4px;
+      font-size:10px;letter-spacing:0.1em">CONTROLS</div>
+      ✊ Fist &nbsp;<kbd style="background:rgba(255,255,255,0.1);
+      padding:1px 6px;border-radius:4px;font-size:10px">F</kbd> — Shockwave<br>
+      🖐 Palm &nbsp;<kbd style="background:rgba(255,255,255,0.1);
+      padding:1px 6px;border-radius:4px;font-size:10px">P</kbd> — Shield<br>
+      👉 Point &nbsp;<kbd style="background:rgba(255,255,255,0.1);
+      padding:1px 6px;border-radius:4px;font-size:10px">L</kbd> — Laser<br>
+      😮 Mouth &nbsp;<kbd style="background:rgba(255,255,255,0.1);
+      padding:1px 6px;border-radius:4px;font-size:10px">M</kbd> — Freeze<br>
+      😊 Smile &nbsp;<kbd style="background:rgba(255,255,255,0.1);
+      padding:1px 6px;border-radius:4px;font-size:10px">S</kbd> — Surge
+    </div>`
+
+    // flash the screen with a colored inset glow for a duration (ms)
+    function flashScreen(color = 'rgba(255,0,0,0.3)', duration = 300) {
+      const prev = document.body.style.boxShadow || ''
+      document.body.style.boxShadow = `inset 0 0 120px ${color}`
+      clearTimeout(flashScreen._t)
+      flashScreen._t = setTimeout(() => {
+      document.body.style.boxShadow = prev
+      }, duration)
+    }
+
+    // quick shake of the main canvas/overlay to emphasize impact
+    function triggerShake(intensity = 8, duration = 400) {
+      const target = document.querySelector('.three-canvas') || document.getElementById('overlay') || document.body
+      const start = Date.now()
+      const original = target.style.transform || ''
+      const step = 16
+      const iv = setInterval(() => {
+      const t = Date.now() - start
+      if (t >= duration) {
+      clearInterval(iv)
+      target.style.transform = original
+      if (p.life % 2 === 0) {
+        const trailGeo = new THREE.SphereGeometry(0.08, 4, 4)
+        const trailMat = new THREE.MeshBasicMaterial({
+          color: p.mesh.material.color,
+          transparent: true,
+          opacity: 0.6
+        })
+        const trail = new THREE.Mesh(trailGeo, trailMat)
+        trail.position.copy(p.mesh.position)
+        scene.add(trail)
+        let trailLife = 0
+        ;(function fadeTrail() {
+          trailLife++
+          trailMat.opacity = 0.6 * (1 - trailLife / 12)
+          trail.scale.setScalar(1 - trailLife / 14)
+          if (trailLife < 12) requestAnimationFrame(fadeTrail)
+          else scene.remove(trail)
+        })()
+      }
+      return
+      }
+      const progress = 1 - t / duration
+      const amp = intensity * progress
+      const dx = (Math.random() * 2 - 1) * amp
+      const dy = (Math.random() * 2 - 1) * amp * 0.6
+      target.style.transform = `translate(${dx}px, ${dy}px) ${original}`
+      }, step)
+    }
+
+    const existingControls = document.getElementById('controls-hint')
+    if (existingControls) {
+      existingControls.outerHTML = controlsHtml
+    } else {
+      document.body.insertAdjacentHTML('beforeend', controlsHtml)
+    }
+    // lightweight screen flash that doesn't duplicate existing helper
+    function flashScreen(color = 'rgba(255,0,0,0.3)', duration = 300) {
+      let el = document.getElementById('__flash_overlay')
+      if (!el) {
+        el = document.createElement('div')
+        el.id = '__flash_overlay'
+        const endHtml = `<div id="end-screen" style="
+          position: fixed; inset: 0; z-index: 30;
+          display: none; flex-direction: column;
+          align-items: center; justify-content: center; gap: 20px;
+          background: rgba(0,0,0,0.8);
+          backdrop-filter: blur(20px);
+        ">
+          <div id="end-title" style="
+            font-size: 64px; font-weight: 800;
+            letter-spacing: 0.15em; text-transform: uppercase;
+            color: white;
+            text-shadow: 0 0 60px rgba(100,100,255,0.9),
+                         0 0 120px rgba(100,100,255,0.4);
+          ">GAME OVER</div>
+
+          <div id="end-subtitle" style="
+            font-size: 18px; color: rgba(255,255,255,0.4);
+            letter-spacing: 0.12em; text-transform: uppercase;
+          ">Score: 0</div>
+
+          <div style="
+            display: flex; gap: 16px; margin-top: 24px;
+          ">
+            <button onclick="restartGame()" style="
+              padding: 14px 44px;
+              background: rgba(255,255,255,0.08);
+              backdrop-filter: blur(12px);
+              border: 1px solid rgba(255,255,255,0.15);
+              border-radius: 50px;
+              color: white; font-size: 14px;
+              letter-spacing: 0.1em; text-transform: uppercase;
+              cursor: pointer; font-family: -apple-system, sans-serif;
+              transition: all 200ms ease;
+            "
+            onmouseover="this.style.background='rgba(255,255,255,0.18)'"
+            onmouseout="this.style.background='rgba(255,255,255,0.08)'"
+            >Play Again</button>
+          </div>
+
+          <div style="
+            margin-top: 8px;
+            font-size: 11px; color: rgba(255,255,255,0.18);
+            letter-spacing: 0.08em;
+          ">Press F · P · L · M · S to control</div>
+        </div>`;
+
+        const existingEnd = document.getElementById('end-screen');
+        if (existingEnd) existingEnd.outerHTML = endHtml;
+        else document.body.insertAdjacentHTML('beforeend', endHtml);
+        document.body.appendChild(el)
+      }
+
+      el.style.background = color
+      el.style.opacity = '1'
+      clearTimeout(flashScreen._t)
+      flashScreen._t = setTimeout(() => {
+        el.style.opacity = '0'
+      }, duration)
+    }
+
+    // helper to perform the wave-clear celebration
+    function celebrateWaveClear() {
+      try {
+        showWaveAnnounce('WAVE CLEAR', '+bonus points')
+        addScore(100)
+        flashScreen('rgba(0,255,150,0.15)', 600)
+
+        const prevPurple = purpleLight?.intensity ?? 3
+        const prevBlue = blueLight?.intensity ?? 3
+        if (purpleLight) purpleLight.intensity = 10
+        if (blueLight) blueLight.intensity = 10
+
+        setTimeout(() => {
+          if (purpleLight) purpleLight.intensity = prevPurple
+          if (blueLight) blueLight.intensity = prevBlue
+        }, 600)
+
+        for (let i = 0; i < 6; i++) {
+          const pos = new THREE.Vector3(
+            (Math.random() - 0.5) * 8,
+            1,
+            (Math.random() - 0.5) * 8
+          )
+          setTimeout(() => spawnParticles(pos, new THREE.Color(0x00ff88)), i * 150)
+        }
+      } catch (e) {
+        console.warn('celebrateWaveClear error', e)
+      }
+    }
+    function detectHandGesture(lm) {
+      const indexUp  = lm[8].y  < lm[5].y
+      const middleUp = lm[12].y < lm[9].y
+      const ringUp   = lm[16].y < lm[13].y
+      const pinkyUp  = lm[20].y < lm[17].y
+      const thumbOut = Math.abs(lm[4].x - lm[17].x) > 0.1
+
+      let gesture = null
+
+      if (!indexUp && !middleUp && !ringUp && !pinkyUp) {
+        gesture = 'Fist'
+      } else if (indexUp && middleUp && ringUp && pinkyUp) {
+        gesture = 'Open Palm'
+      } else if (indexUp && !middleUp && !ringUp && !pinkyUp) {
+        gesture = 'Point'
+      }
+
+      // Optionally detect Gun/Peace/etc using thumbOut or other heuristics here
+      return gesture
     }
 
     if (type === 'Open Palm') {
