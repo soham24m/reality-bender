@@ -490,7 +490,25 @@ scene.add(new THREE.Line(
   light.position.set(pos[0], 2, pos[2])
   scene.add(light)
 })
+// adjust camera angle to better view the arena
+camera3D.position.set(0, 6, 12)
+camera3D.lookAt(0, 0, 0)
 
+// replace existing grid helpers with a single larger grid
+if (typeof gridHelper !== 'undefined') scene.remove(gridHelper)
+if (typeof grid2 !== 'undefined') scene.remove(grid2)
+const grid = new THREE.GridHelper(40, 40, 0x0033ff, 0x001133)
+grid.position.y = -0.99
+scene.add(grid)
+
+// expand the floor to cover a larger arena (replace existing floor geometry)
+if (floor && floor.geometry) {
+  floor.geometry.dispose()
+  floor.geometry = new THREE.PlaneGeometry(60, 60)
+  floor.rotation.x = -Math.PI / 2
+  floor.position.y = -1
+  floor.receiveShadow = true
+}
 scene.add(new THREE.AmbientLight(0x111133, 2))
 purpleLight = new THREE.PointLight(0x6600ff, 3, 20)
 purpleLight.position.set(-5, 5, -5)
