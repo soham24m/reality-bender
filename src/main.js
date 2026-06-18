@@ -63,12 +63,85 @@ function updateHPBars() {
   document.getElementById('enemy-hp-bar').style.width = (active / total * 100) + '%'
 }
 updateHPBars()
+const scoreEl = document.getElementById('score-display')
+const playerUpgrades = {
+  damageMultiplier: 1,
+  healAmount: 20,
+  freezeDuration: 2200,
+  shieldRegen: 20
+}
+
+if (scoreEl && !document.getElementById('combo-display')) {
+  scoreEl.insertAdjacentHTML('afterend', '<div id="combo-display" style="\n  position: fixed;\n  top: 52%;\n  left: 50%;\n  transform: translateX(-50%);\n  z-index: 20;\n  font-family: -apple-system, sans-serif;\n  font-size: 20px;\n  font-weight: 800;\n  color: #ffaa00;\n  letter-spacing: 0.12em;\n  text-transform: uppercase;\n  opacity: 0;\n  pointer-events: none;\n  text-shadow: 0 0 24px rgba(255,170,0,0.8);\n  transition: opacity 200ms ease, transform 150ms ease;\n"></div>')
+}
+let comboCount = 0
+let comboTimer = null
+let comboMultiplier = 1
+
+function incrementCombo() {
+  comboCount++
+  clearTimeout(comboTimer)
+  
+  if (comboCount >= 2) {
+    comboMultiplier = Math.min(4, 1 + Math.floor(comboCount / 2) * 0.5)
+  }
+  
+  const el = document.getElementById('combo-display')
+  if (!el) return
+  
+  if (comboCount >= 2) {
+    el.textContent = 'x' + comboCount + ' COMBO'
+    el.style.opacity = '1'
+    el.style.transform = 'translateX(-50%) scale(1.15)'
+    setTimeout(() => {
+      el.style.transform = 'translateX(-50%) scale(1)'
+    }, 150)
+  }
+  
+  comboTimer = setTimeout(() => {
+    comboCount = 0
+    comboMultiplier = 1
+    if (el) el.style.opacity = '0'
+  }, 2500)
+}
+
+function breakCombo() {
+  comboCount = 0
+  comboMultiplier = 1
+  clearTimeout(comboTimer)
+  const el = document.getElementById('combo-display')
+  if (el) el.style.opacity = '0'
+}
 
 function flashScreenRed() {
   document.body.style.boxShadow = 'inset 0 0 120px rgba(255,0,0,0.4)'
   setTimeout(() => {
     document.body.style.boxShadow = 'none'
   }, 300)
+}
+
+function flashScreen(color = 'rgba(255,0,0,0.3)', duration = 300) {
+  document.body.style.boxShadow = 'inset 0 0 120px ' + color
+  clearTimeout(flashScreen._t)
+  flashScreen._t = setTimeout(() => {
+    document.body.style.boxShadow = 'none'
+  }, duration)
+}
+
+function triggerShake(intensity = 8, duration = 300) {
+  const el = document.getElementById('overlay')
+  if (!el) return
+  const start = Date.now()
+  const iv = setInterval(() => {
+    if (Date.now() - start >= duration) {
+      clearInterval(iv)
+      el.style.transform = ''
+      return
+    }
+    const dx = (Math.random() - 0.5) * intensity * 0.4
+    const dy = (Math.random() - 0.5) * intensity * 0.3
+    el.style.transform = 'translate(' + dx + 'px,' + dy + 'px)'
+  }, 16)
 }
 
 function resizeCanvas() {
@@ -335,15 +408,6 @@ function onInteraction(type, source) {
     const controlsHtml = `<div id="controls-hint" style="
       position: fixed; bottom: 28px; right: 24px;
       z-index: 10;
-      background: rgba(255,255,255,0.06);
-      backdrop-filter: blur(16px);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 16px;
-      padding: 12px 16px;
-      font-size: 11px;
-      color: rgba(255,255,255,0.35);
-      letter-spacing: 0.05em;
-      line-height: 2;
     ">
       <div style="color:rgba(255,255,255,0.6);margin-bottom:4px;
       font-size:10px;letter-spacing:0.1em">CONTROLS</div>
@@ -355,44 +419,6 @@ function onInteraction(type, source) {
       padding:1px 6px;border-radius:4px;font-size:10px">L</kbd> — Laser<br>
       😮 Mouth &nbsp;<kbd style="background:rgba(255,255,255,0.1);
       padding:1px 6px;border-radius:4px;font-size:10px">M</kbd> — Freeze<br>
-      😊 Smile &nbsp;<kbd style="background:rgba(255,255,255,0.1);
-      padding:1px 6px;border-radius:4px;font-size:10px">S</kbd> — Surge
-    </div>`
-
-    // flash the screen with a colored inset glow for a duration (ms)
-    function flashScreen(color = 'rgba(255,0,0,0.3)', duration = 300) {
-      const prev = document.body.style.boxShadow || ''
-      document.body.style.boxShadow = `inset 0 0 120px ${color}`
-      clearTimeout(flashScreen._t)
-      flashScreen._t = setTimeout(() => {
-      document.body.style.boxShadow = prev
-      }, duration)
-    }
-
-    // quick shake of the main canvas/overlay to emphasize impact
-    function triggerShake(intensity = 8, duration = 400) {
-      const target = document.querySelector('.three-canvas') || document.getElementById('overlay') || document.body
-      const start = Date.now()
-      const original = target.style.transform || ''
-      const step = 16
-      const iv = setInterval(() => {
-      const t = Date.now() - start
-      if (t >= duration) {
-      clearInterval(iv)
-      target.style.transform = original
-      if (p.life % 2 === 0) {
-        const trailGeo = new THREE.SphereGeometry(0.08, 4, 4)
-        const trailMat = new THREE.MeshBasicMaterial({
-          color: p.mesh.material.color,
-          transparent: true,
-          opacity: 0.6
-        })
-        const trail = new THREE.Mesh(trailGeo, trailMat)
-        trail.position.copy(p.mesh.position)
-        scene.add(trail)
-        let trailLife = 0
-        ;(function fadeTrail() {
-          trailLife++
           trailMat.opacity = 0.6 * (1 - trailLife / 12)
           trail.scale.setScalar(1 - trailLife / 14)
           if (trailLife < 12) requestAnimationFrame(fadeTrail)
@@ -425,9 +451,16 @@ function onInteraction(type, source) {
           position: fixed; inset: 0; z-index: 30;
           display: none; flex-direction: column;
           align-items: center; justify-content: center; gap: 20px;
-          background: rgba(0,0,0,0.8);
+          background: rgba(0,0,0,0.8);a
           backdrop-filter: blur(20px);
         ">
+      <div id="upgrade-screen" style="
+        position: fixed; inset: 0; z-index: 25;
+        display: none; flex-direction: column;
+        align-items: center; justify-content: center; gap: 12px;
+        background: rgba(0,0,0,0.75);
+        backdrop-filter: blur(20px);
+      "></div>
           <div id="end-title" style="
             font-size: 64px; font-weight: 800;
             letter-spacing: 0.15em; text-transform: uppercase;
@@ -444,13 +477,13 @@ function onInteraction(type, source) {
           <div style="
             display: flex; gap: 16px; margin-top: 24px;
           ">
-            <button onclick="restartGame()" style="
-              padding: 14px 44px;
-              background: rgba(255,255,255,0.08);
-              backdrop-filter: blur(12px);
-              border: 1px solid rgba(255,255,255,0.15);
-              border-radius: 50px;
-              color: white; font-size: 14px;
+        const endHtml = `<div id="end-screen" style="
+          position: fixed; inset: 0; z-index: 30;
+          display: none; flex-direction: column;
+          align-items: center; justify-content: center; gap: 20px;
+          background: rgba(0,0,0,0.8);
+          backdrop-filter: blur(20px);
+        ">
               letter-spacing: 0.1em; text-transform: uppercase;
               cursor: pointer; font-family: -apple-system, sans-serif;
               transition: all 200ms ease;
@@ -554,17 +587,30 @@ function onInteraction(type, source) {
         orbLight.color.setHex(0x00ffff)
       }, 300)
     }
+    if (type === 'Fist') {
+      showGestureConfirm('SHOCKWAVE', '#ffffff')
+      damageAllEnemies(30, 7)
+      pushEnemiesInRange(7, 4)
+      playerOrb.material.emissive.setHex(0xffffff)
+      playerOrb.scale.set(1.5, 1.5, 1.5)
+      triggerShake(10, 250)
+      setTimeout(() => {
+        playerOrb.material.emissive.setHex(0x00ccff)
+        playerOrb.scale.set(1, 1, 1)
+      }, 300)
+    }
 
-    if (type === 'Gun') {
-      showGestureConfirm('FIRE', '#ff6600')
-      damageAllEnemies(30, 6)
-      pushEnemiesInRange(6, 7)
-      playerOrb.material.emissive.setHex(0xff6600)
-      orbLight.color.setHex(0xff6600)
+    if (type === 'Open Palm') {
+      showGestureConfirm('SHIELD', '#00ff88')
+      playerHP = Math.min(100, playerHP + 15)
+      updateHPBars()
+      playerOrb.material.emissive.setHex(0x00ff44)
+      orbLight.color.setHex(0x00ff44)
       setTimeout(() => {
         playerOrb.material.emissive.setHex(0x00ccff)
         orbLight.color.setHex(0x00ffff)
-      }, 300)
+      }, 1000)
+    }
     }
 
     if (type === 'Peace') {
