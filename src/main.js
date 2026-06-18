@@ -394,7 +394,20 @@ let playerOrb, orbLight, orbShell, purpleLight, blueLight, stars, scene
 function onInteraction(type, source) {
   if (isOnCooldown(type)) return
   setCooldown(type)
-
+  window.startGame = function() {
+    const menu = document.getElementById('main-menu')
+    if (menu) {
+      menu.style.opacity = '0'
+      menu.style.transition = 'opacity 600ms ease'
+      setTimeout(() => { menu.style.display = 'none' }, 600)
+    }
+    startCamera().then(() => {
+      startTracking()
+      setTimeout(() => {
+        if (!playerDefeated) spawnWave(0)
+      }, 2000)
+    })
+  }
   updatePill(type, source === 'hand' ? 'hand detected' : 'tracking')
 
   if (source === 'hand') {
@@ -434,7 +447,7 @@ function onInteraction(type, source) {
       target.style.transform = `translate(${dx}px, ${dy}px) ${original}`
       }, step)
     }
-
+    ;
     const existingControls = document.getElementById('controls-hint')
     if (existingControls) {
       existingControls.outerHTML = controlsHtml
@@ -453,20 +466,87 @@ function onInteraction(type, source) {
           align-items: center; justify-content: center; gap: 20px;
           background: rgba(0,0,0,0.8);a
           backdrop-filter: blur(20px);
+        <div id="main-menu" style="
+          position: fixed; inset: 0; z-index: 50;
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center; gap: 16px;
+          background: rgba(0,0,0,0.92);
+          backdrop-filter: blur(24px);
         ">
-      <div id="upgrade-screen" style="
-        position: fixed; inset: 0; z-index: 25;
+          <div style="
+            font-size: 11px; letter-spacing: 0.35em;
+            color: rgba(255,255,255,0.3);
+            text-transform: uppercase; margin-bottom: 8px;
+          ">Soham Mishra · Reality Bender</div>
+
+          <div style="
+            font-size: 72px; font-weight: 900;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            color: white; text-align: center;
+            text-shadow: 0 0 80px rgba(0,150,255,0.6),
+             0 0 160px rgba(0,150,255,0.3);
+            line-height: 1;
+          ">REALITY<br>BENDER</div>
+
+          <div style="
+            font-size: 13px; color: rgba(255,255,255,0.3);
+            letter-spacing: 0.15em; margin-top: 4px;
+            text-transform: uppercase;
+          ">Gesture-Controlled Combat Arena</div>
+
+          <div style="
+            margin-top: 32px;
+            display: flex; flex-direction: column;
+            align-items: center; gap: 10px;
+          ">
+            <button onclick="startGame()" style="
+              padding: 16px 56px;
+              background: rgba(0,150,255,0.15);
+              backdrop-filter: blur(12px);
+              border: 1px solid rgba(0,150,255,0.4);
+              border-radius: 50px;
+              color: white; font-size: 15px;
+              letter-spacing: 0.12em; text-transform: uppercase;
+              cursor: pointer; font-family: -apple-system, sans-serif;
+              transition: all 250ms ease;
+              box-shadow: 0 0 30px rgba(0,150,255,0.2);
+            "
+            onmouseover="this.style.background='rgba(0,150,255,0.3)';this.style.boxShadow='0 0 50px rgba(0,150,255,0.4)'"
+            onmouseout="this.style.background='rgba(0,150,255,0.15)';this.style.boxShadow='0 0 30px rgba(0,150,255,0.2)'"
+            >Start Game</button>
+
+            <div style="
+              font-size: 11px; color: rgba(255,255,255,0.3);
+              letter-spacing: 0.08em; margin-top: 8px;
+            ">Allow camera access when prompted</div>
+          </div>
+
+          <div style="
+            position: absolute; bottom: 32px;
+            font-size: 11px; color: rgba(255,255,255,0.15);
+            letter-spacing: 0.06em; text-align: center; line-height: 2;
+          ">
+            ✊ F — Shockwave &nbsp;·&nbsp; 
+            🖐 P — Shield &nbsp;·&nbsp; 
+            👉 L — Laser &nbsp;·nbsp; 
+            😮 M — Freeze &nbsp;·nbsp; 
+            😊 S — Surge
+          </div>
+        </div>
+
+          ">
+            <div id="upgrade-screen" style="position: fixed; inset: 0; z-index: 25;
         display: none; flex-direction: column;
         align-items: center; justify-content: center; gap: 12px;
         background: rgba(0,0,0,0.75);
         backdrop-filter: blur(20px);
-      "></div>
+            "></div>
           <div id="end-title" style="
             font-size: 64px; font-weight: 800;
             letter-spacing: 0.15em; text-transform: uppercase;
             color: white;
             text-shadow: 0 0 60px rgba(100,100,255,0.9),
-                         0 0 120px rgba(100,100,255,0.4);
+             0 0 120px rgba(100,100,255,0.4);
           ">GAME OVER</div>
 
           <div id="end-subtitle" style="
@@ -498,452 +578,505 @@ function onInteraction(type, source) {
             font-size: 11px; color: rgba(255,255,255,0.18);
             letter-spacing: 0.08em;
           ">Press F · P · L · M · S to control</div>
-        </div>`;
+        `;
 
-        const existingEnd = document.getElementById('end-screen');
-        if (existingEnd) existingEnd.outerHTML = endHtml;
-        else document.body.insertAdjacentHTML('beforeend', endHtml);
-        document.body.appendChild(el)
-      }
+          const existingEnd = document.getElementById('end-screen');
+          if (existingEnd) existingEnd.outerHTML = endHtml;
+          else document.body.insertAdjacentHTML('beforeend', endHtml);
+          document.body.appendChild(el)
+              }
 
-      el.style.background = color
-      el.style.opacity = '1'
-      clearTimeout(flashScreen._t)
-      flashScreen._t = setTimeout(() => {
-        el.style.opacity = '0'
-      }, duration)
-    }
+              el.style.background = color
+              el.style.opacity = '1'
+              clearTimeout(flashScreen._t)
+              flashScreen._t = setTimeout(() => {
+          el.style.opacity = '0'
+              }, duration)
+            }
 
-    // helper to perform the wave-clear celebration
-    function celebrateWaveClear() {
-      try {
-        showWaveAnnounce('WAVE CLEAR', '+bonus points')
-        addScore(100)
-        flashScreen('rgba(0,255,150,0.15)', 600)
+            // helper to perform the wave-clear celebration
+            function celebrateWaveClear() {
+              try {
+          showWaveAnnounce('WAVE CLEAR', '+bonus points')
+          addScore(100)
+          flashScreen('rgba(0,255,150,0.15)', 600)
 
-        const prevPurple = purpleLight?.intensity ?? 3
-        const prevBlue = blueLight?.intensity ?? 3
-        if (purpleLight) purpleLight.intensity = 10
-        if (blueLight) blueLight.intensity = 10
+          const prevPurple = purpleLight?.intensity ?? 3
+          const prevBlue = blueLight?.intensity ?? 3
+          if (purpleLight) purpleLight.intensity = 10
+          if (blueLight) blueLight.intensity = 10
 
-        setTimeout(() => {
-          if (purpleLight) purpleLight.intensity = prevPurple
-          if (blueLight) blueLight.intensity = prevBlue
-        }, 600)
+          setTimeout(() => {
+            if (purpleLight) purpleLight.intensity = prevPurple
+            if (blueLight) blueLight.intensity = prevBlue
+          }, 600)
 
-        for (let i = 0; i < 6; i++) {
-          const pos = new THREE.Vector3(
-            (Math.random() - 0.5) * 8,
-            1,
-            (Math.random() - 0.5) * 8
-          )
-          setTimeout(() => spawnParticles(pos, new THREE.Color(0x00ff88)), i * 150)
-        }
-      } catch (e) {
-        console.warn('celebrateWaveClear error', e)
-      }
-    }
-    function detectHandGesture(lm) {
-      const indexUp  = lm[8].y  < lm[5].y
-      const middleUp = lm[12].y < lm[9].y
-      const ringUp   = lm[16].y < lm[13].y
-      const pinkyUp  = lm[20].y < lm[17].y
-      const thumbOut = Math.abs(lm[4].x - lm[17].x) > 0.1
-
-      let gesture = null
-
-      if (!indexUp && !middleUp && !ringUp && !pinkyUp) {
-        gesture = 'Fist'
-      } else if (indexUp && middleUp && ringUp && pinkyUp) {
-        gesture = 'Open Palm'
-      } else if (indexUp && !middleUp && !ringUp && !pinkyUp) {
-        gesture = 'Point'
-      }
-
-      // Optionally detect Gun/Peace/etc using thumbOut or other heuristics here
-      return gesture
-    }
-
-    if (type === 'Open Palm') {
-      showGestureConfirm('SHIELD', '#00ff88')
-      playerHP = Math.min(100, playerHP + 15)
-      updateHPBars()
-      playerOrb.material.emissive.setHex(0x00ff44)
-      orbLight.color.setHex(0x00ff44)
-      setTimeout(() => {
-        playerOrb.material.emissive.setHex(0x00ccff)
-        orbLight.color.setHex(0x00ffff)
-      }, 1000)
-    }
-
-    if (type === 'Pointing') {
-      showGestureConfirm('LASER', '#ffff00')
-      damageAllEnemies(20, 8)
-      pushEnemiesInRange(8, 5)
-      playerOrb.material.emissive.setHex(0xffff00)
-      orbLight.color.setHex(0xffff00)
-      setTimeout(() => {
-        playerOrb.material.emissive.setHex(0x00ccff)
-        orbLight.color.setHex(0x00ffff)
-      }, 300)
-    }
-    if (type === 'Fist') {
-      showGestureConfirm('SHOCKWAVE', '#ffffff')
-      damageAllEnemies(30, 7)
-      pushEnemiesInRange(7, 4)
-      playerOrb.material.emissive.setHex(0xffffff)
-      playerOrb.scale.set(1.5, 1.5, 1.5)
-      triggerShake(10, 250)
-      setTimeout(() => {
-        playerOrb.material.emissive.setHex(0x00ccff)
-        playerOrb.scale.set(1, 1, 1)
-      }, 300)
-    }
-
-    if (type === 'Open Palm') {
-      showGestureConfirm('SHIELD', '#00ff88')
-      playerHP = Math.min(100, playerHP + 15)
-      updateHPBars()
-      playerOrb.material.emissive.setHex(0x00ff44)
-      orbLight.color.setHex(0x00ff44)
-      setTimeout(() => {
-        playerOrb.material.emissive.setHex(0x00ccff)
-        orbLight.color.setHex(0x00ffff)
-      }, 1000)
-    }
-    }
-
-    if (type === 'Peace') {
-      showGestureConfirm('PEACE', '#aa88ff')
-    }
-  }
-
-  if (source === 'face') {
-    if (type === 'Mouth open') {
-      showGestureConfirm('FREEZE', '#0088ff')
-      enemiesFrozenUntil = Date.now() + 1200
-      enemies.forEach(enemy => {
-        if (!enemy.defeated) enemy.mesh.material.emissive.setHex(0x0000ff)
-      })
-    }
-
-    if (type === 'Smiling') {
-      showGestureConfirm('SURGE', '#ffaa00')
-      purpleLight.intensity = 8
-      blueLight.intensity = 8
-      setTimeout(() => {
-        purpleLight.intensity = 3
-        blueLight.intensity = 3
-      }, 500)
-    }
-
-    if (type === 'Head tilt left') {
-      showGestureConfirm('DODGE LEFT', '#ff88ff')
-      playerOrb.position.x -= 1.5
-    }
-
-    if (type === 'Head tilt right') {
-      showGestureConfirm('DODGE RIGHT', '#ff88ff')
-      playerOrb.position.x += 1.5
-    }
-  }
-}
-
-// ─── Three.js scene ──────────────────────────────────────────────────────────
-scene = new THREE.Scene()
-
-const starGeometry = new THREE.BufferGeometry()
-const starPositions = []
-for (let i = 0; i < 800; i++) {
-  starPositions.push(
-    (Math.random() - 0.5) * 200,
-    (Math.random() - 0.5) * 200,
-    (Math.random() - 0.5) * 200
-  )
-}
-starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3))
-stars = new THREE.Points(starGeometry, new THREE.PointsMaterial({
-  color: 0xffffff, size: 0.08, transparent: true, opacity: 0.8
-}))
-scene.add(stars)
-
-const camera3D = new THREE.PerspectiveCamera(
-  75, window.innerWidth / window.innerHeight, 0.1, 100
-)
-camera3D.position.set(0, 4, 10)
-camera3D.lookAt(0, 0, -2)
-
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-renderer.setClearColor(0x000000, 1)
-renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.setPixelRatio(window.devicePixelRatio)
-renderer.shadowMap.enabled = true
-
-const threeCanvas = renderer.domElement
-threeCanvas.classList.add('three-canvas')
-threeCanvas.style.position = 'fixed'
-threeCanvas.style.top = '0'
-threeCanvas.style.left = '0'
-threeCanvas.style.width = '100vw'
-threeCanvas.style.height = '100vh'
-threeCanvas.style.zIndex = '1'
-threeCanvas.style.pointerEvents = 'none'
-document.body.insertBefore(threeCanvas, document.getElementById('overlay'))
-
-const floor = new THREE.Mesh(
-  new THREE.PlaneGeometry(30, 30, 20, 20),
-  new THREE.MeshStandardMaterial({ color: 0x000510, roughness: 1, metalness: 0 })
-)
-floor.rotation.x = -Math.PI / 2
-floor.position.y = -1
-floor.receiveShadow = true
-scene.add(floor)
-
-const gridHelper = new THREE.GridHelper(30, 30, 0x0033ff, 0x001133)
-gridHelper.position.y = -0.99
-scene.add(gridHelper)
-
-const grid2 = new THREE.GridHelper(30, 15, 0x220044, 0x110022)
-grid2.position.y = -0.98
-scene.add(grid2)
-
-const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x4444ff, transparent: true, opacity: 0.4 })
-const arenaSize = 10
-const corners = [
-  [-arenaSize, -1, -arenaSize], [arenaSize, -1, -arenaSize],
-  [arenaSize, -1, arenaSize], [-arenaSize, -1, arenaSize],
-  [-arenaSize, -1, -arenaSize]
-]
-scene.add(new THREE.Line(
-  new THREE.BufferGeometry().setFromPoints(corners.map(c => new THREE.Vector3(...c))),
-  edgeMaterial
-))
-
-;[[-10, 0, -10], [10, 0, -10], [-10, 0, 10], [10, 0, 10]].forEach(pos => {
-  const pillar = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.05, 0.05, 4, 8),
-    new THREE.MeshStandardMaterial({ color: 0x4400ff, emissive: 0x2200ff, emissiveIntensity: 3 })
-  )
-  pillar.position.set(pos[0], 1, pos[2])
-  scene.add(pillar)
-  const light = new THREE.PointLight(0x4400ff, 1, 8)
-  light.position.set(pos[0], 2, pos[2])
-  scene.add(light)
-})
-// adjust camera angle to better view the arena
-camera3D.position.set(0, 6, 12)
-camera3D.lookAt(0, 0, 0)
-
-// replace existing grid helpers with a single larger grid
-if (typeof gridHelper !== 'undefined') scene.remove(gridHelper)
-if (typeof grid2 !== 'undefined') scene.remove(grid2)
-const grid = new THREE.GridHelper(40, 40, 0x0033ff, 0x001133)
-grid.position.y = -0.99
-scene.add(grid)
-
-// expand the floor to cover a larger arena (replace existing floor geometry)
-if (floor && floor.geometry) {
-  floor.geometry.dispose()
-  floor.geometry = new THREE.PlaneGeometry(60, 60)
-  floor.rotation.x = -Math.PI / 2
-  floor.position.y = -1
-  floor.receiveShadow = true
-}
-scene.add(new THREE.AmbientLight(0x111133, 2))
-purpleLight = new THREE.PointLight(0x6600ff, 3, 20)
-purpleLight.position.set(-5, 5, -5)
-scene.add(purpleLight)
-blueLight = new THREE.PointLight(0x0044ff, 3, 20)
-blueLight.position.set(5, 5, 5)
-scene.add(blueLight)
-const centerLight = new THREE.PointLight(0xffffff, 1, 10)
-centerLight.position.set(0, 3, 0)
-scene.add(centerLight)
-
-playerOrb = new THREE.Mesh(
-  new THREE.SphereGeometry(0.35, 32, 32),
-  new THREE.MeshStandardMaterial({
-    color: 0x00ffff, emissive: 0x00ccff, emissiveIntensity: 3,
-    roughness: 0, metalness: 1, transparent: true, opacity: 0.9
-  })
-)
-playerOrb.position.set(0, 0, 3)
-scene.add(playerOrb)
-
-orbShell = new THREE.Mesh(
-  new THREE.SphereGeometry(0.55, 32, 32),
-  new THREE.MeshStandardMaterial({
-    color: 0x0044ff, emissive: 0x0022ff, emissiveIntensity: 1,
-    transparent: true, opacity: 0.15, side: THREE.BackSide
-  })
-)
-scene.add(orbShell)
-
-orbLight = new THREE.PointLight(0x00ffff, 2, 5)
-playerOrb.add(orbLight)
-
-setTimeout(() => spawnWave(0), 2000)
-
-window.addEventListener('resize', () => {
-  camera3D.aspect = window.innerWidth / window.innerHeight
-  camera3D.updateProjectionMatrix()
-  renderer.setSize(window.innerWidth, window.innerHeight)
-  resizeCanvas()
-})
-
-let frameCount = 0
-function animate() {
-  requestAnimationFrame(animate)
-  frameCount++
-
-  const bar = document.getElementById('cooldown-bar')
-  const now = Date.now()
-  const mostRecent = Object.entries(actionCooldowns).sort((a, b) => b[1] - a[1])[0]
-
-  if (mostRecent) {
-    const gesture = mostRecent[0]
-    const expiry = mostRecent[1]
-    const duration = COOLDOWN_TIMES[gesture] || 1000
-    const remaining = Math.max(0, expiry - now)
-    const progress = 1 - (remaining / duration)
-    bar.style.width = (progress * 100) + '%'
-  } else {
-    bar.style.width = '100%'
-  }
-
-  if (enemiesFrozenUntil && now >= enemiesFrozenUntil) {
-    enemiesFrozenUntil = 0
-    enemies.forEach(enemy => {
-      if (!enemy.defeated) {
-        const config = ENEMY_TYPES[enemy.type]
-        enemy.mesh.material.emissive.setHex(config.emissive)
-      }
-    })
-  }
-
-  stars.rotation.y += 0.0002
-  playerOrb.position.y = Math.sin(frameCount * 0.03) * 0.2
-  playerOrb.rotation.y += 0.01
-  orbShell.position.copy(playerOrb.position)
-  orbShell.rotation.y -= 0.02
-  orbShell.rotation.x += 0.01
-
-  if (!playerDefeated) {
-    const frozen = enemiesFrozenUntil && now < enemiesFrozenUntil
-
-    enemies.forEach(enemy => {
-      if (enemy.defeated || frozen) return
-
-      const dist = enemy.mesh.position.distanceTo(playerOrb.position)
-
-      if (dist > 3) {
-        const dir = new THREE.Vector3()
-        dir.subVectors(playerOrb.position, enemy.mesh.position).normalize()
-        enemy.mesh.position.addScaledVector(dir, enemy.speed)
-        enemy.mesh.position.x +=
-          Math.sin((frameCount + enemy.frameOffset) * 0.08) * 0.03
-      } else {
-        enemy.mesh.position.x += (Math.random() - 0.5) * 0.08
-        enemy.mesh.position.z += (Math.random() - 0.5) * 0.08
-
-        if (frameCount % 60 === 0 && !playerDefeated) {
-          playerHP = Math.max(0, playerHP - enemy.damage)
-          updateHPBars()
-          flashScreenRed()
-          if (playerHP <= 0) {
-            playerDefeated = true
-            updatePill('Defeated', 'Game over')
+          for (let i = 0; i < 6; i++) {
+            const pos = new THREE.Vector3(
+              (Math.random() - 0.5) * 8,
+              1,
+              (Math.random() - 0.5) * 8
+            )
+            setTimeout(() => spawnParticles(pos, new THREE.Color(0x00ff88)), i * 150)
           }
-        }
-      }
+              } catch (e) {
+          console.warn('celebrateWaveClear error', e)
+              }
+            }
+            function detectHandGesture(lm) {
+              const indexUp  = lm[8].y  < lm[5].y
+              const middleUp = lm[12].y < lm[9].y
+              const ringUp   = lm[16].y < lm[13].y
+              const pinkyUp  = lm[20].y < lm[17].y
+              const thumbOut = Math.abs(lm[4].x - lm[17].x) > 0.1
 
-      enemy.mesh.rotation.x += 0.012
-      enemy.mesh.rotation.y += 0.018
-    })
+              let gesture = null
 
-    if (waveInProgress &&
-        enemies.length > 0 &&
-        enemies.every(e => e.defeated)) {
-      waveInProgress = false
-      enemies.length = 0
-      updateHPBars()
-      setTimeout(() => spawnWave(currentWave + 1), 2500)
-    }
-  }
+              if (!indexUp && !middleUp && !ringUp && !pinkyUp) {
+          gesture = 'Fist'
+              } else if (indexUp && middleUp && ringUp && pinkyUp) {
+          gesture = 'Open Palm'
+              } else if (indexUp && !middleUp && !ringUp && !pinkyUp) {
+          gesture = 'Point'
+              }
 
-  orbLight.intensity = (Math.sin(frameCount * 0.05) * 0.5 + 1) * 2
-  renderer.render(scene, camera3D)
-}
-animate()
+              // Optionally detect Gun/Peace/etc using thumbOut or other heuristics here
+              return gesture
+            }
 
-// ─── Gesture stability engine ────────────────────────────────────────────────
-const gestureBuffer = []
-const BUFFER_SIZE = 8
-let currentLockedGesture = null
-let lockedGestureExpiry = 0
+            if (type === 'Open Palm') {
+              showGestureConfirm('SHIELD', '#00ff88')
+              playerHP = Math.min(100, playerHP + 15)
+              updateHPBars()
+              playerOrb.material.emissive.setHex(0x00ff44)
+              orbLight.color.setHex(0x00ff44)
+              setTimeout(() => {
+          playerOrb.material.emissive.setHex(0x00ccff)
+          orbLight.color.setHex(0x00ffff)
+              }, 1000)
+            }
 
-function submitRawGesture(gesture, source) {
-  const now = Date.now()
+            if (type === 'Pointing') {
+              showGestureConfirm('LASER', '#ffff00')
+              damageAllEnemies(20, 8)
+              pushEnemiesInRange(8, 5)
+              playerOrb.material.emissive.setHex(0xffff00)
+              orbLight.color.setHex(0xffff00)
+              setTimeout(() => {
+          playerOrb.material.emissive.setHex(0x00ccff)
+          orbLight.color.setHex(0x00ffff)
+              }, 300)
+            }
+            if (type === 'Fist') {
+              showGestureConfirm('SHOCKWAVE', '#ffffff')
+              damageAllEnemies(30, 7)
+              pushEnemiesInRange(7, 4)
+              playerOrb.material.emissive.setHex(0xffffff)
+              playerOrb.scale.set(1.5, 1.5, 1.5)
+              triggerShake(10, 250)
+              setTimeout(() => {
+          playerOrb.material.emissive.setHex(0x00ccff)
+          playerOrb.scale.set(1, 1, 1)
+              }, 300)
+            }
 
-  if (currentLockedGesture && now < lockedGestureExpiry) return
+            if (type === 'Open Palm') {
+              showGestureConfirm('SHIELD', '#00ff88')
+              playerHP = Math.min(100, playerHP + 15)
+              updateHPBars()
+              playerOrb.material.emissive.setHex(0x00ff44)
+              orbLight.color.setHex(0x00ff44)
+              setTimeout(() => {
+          playerOrb.material.emissive.setHex(0x00ccff)
+          orbLight.color.setHex(0x00ffff)
+              }, 1000)
+            }
+            }
 
-  gestureBuffer.push({ gesture, source, time: now })
-  if (gestureBuffer.length > BUFFER_SIZE) gestureBuffer.shift()
+            if (type === 'Peace') {
+              showGestureConfirm('PEACE', '#aa88ff')
+            }
+          }
 
-  const recent = gestureBuffer.filter(g => now - g.time < 600)
+          if (source === 'face') {
+            if (type === 'Mouth open') {
+              showGestureConfirm('FREEZE', '#0088ff')
+              enemiesFrozenUntil = Date.now() + 1200
+              enemies.forEach(enemy => {
+          if (!enemy.defeated) enemy.mesh.material.emissive.setHex(0x0000ff)
+              })
+            }
 
-  const counts = {}
-  recent.forEach(g => {
-    counts[g.gesture] = (counts[g.gesture] || 0) + 1
-  })
+            if (type === 'Smiling') {
+              showGestureConfirm('SURGE', '#ffaa00')
+              purpleLight.intensity = 8
+              blueLight.intensity = 8
+              setTimeout(() => {
+          purpleLight.intensity = 3
+          blueLight.intensity = 3
+              }, 500)
+            }
 
-  const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]
+            if (type === 'Head tilt left') {
+              showGestureConfirm('DODGE LEFT', '#ff88ff')
+              playerOrb.position.x -= 1.5
+            }
 
-  if (dominant && dominant[1] >= 5) {
-    const confirmedGesture = dominant[0]
-    const confirmedSource = recent.find(g => g.gesture === confirmedGesture)?.source || source
+            if (type === 'Head tilt right') {
+              showGestureConfirm('DODGE RIGHT', '#ff88ff')
+              playerOrb.position.x += 1.5
+            }
+          }
+              }
 
-    const lockDuration = {
-      'Fist': 800,
-      'Open Palm': 1000,
-      'Pointing': 800,
-      'Peace': 800,
-      'Gun': 800,
-      'Mouth open': 1200,
-      'Smiling': 1500,
-      'Head tilt left': 1000,
-      'Head tilt right': 1000,
-      'Neutral': 300
-    }
+              // ─── Three.js scene ──────────────────────────────────────────────────────────
+              scene = new THREE.Scene()
 
-    const duration = lockDuration[confirmedGesture] || 800
+              const starGeometry = new THREE.BufferGeometry()
+              const starPositions = []
+              for (let i = 0; i < 800; i++) {
+          starPositions.push(
+            (Math.random() - 0.5) * 200,
+            (Math.random() - 0.5) * 200,
+            (Math.random() - 0.5) * 200
+          )
+              }
+              starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3))
+              stars = new THREE.Points(starGeometry, new THREE.PointsMaterial({
+          color: 0xffffff, size: 0.08, transparent: true, opacity: 0.8
+              }))
+              scene.add(stars)
 
-    if (confirmedGesture !== currentLockedGesture) {
-      currentLockedGesture = confirmedGesture
-      lockedGestureExpiry = now + duration
-      gestureBuffer.length = 0
-      onInteraction(confirmedGesture, confirmedSource)
-    }
-  }
-}
+              const camera3D = new THREE.PerspectiveCamera(
+          75, window.innerWidth / window.innerHeight, 0.1, 100
+              )
+              camera3D.position.set(0, 4, 10)
+              camera3D.lookAt(0, 0, -2)
 
-async function startCamera() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 1280, height: 720, facingMode: 'user' },
-      audio: false
-    })
-    video.srcObject = stream
-    await video.play()
-    updatePill('Ready', 'camera active')
-  } catch (err) {
-    console.error('Camera error:', err)
-    updatePill('Camera error', err.message)
-  }
-}
+              const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+              renderer.setClearColor(0x000000, 1)
+              renderer.setSize(window.innerWidth, window.innerHeight)
+              renderer.setPixelRatio(window.devicePixelRatio)
+              renderer.shadowMap.enabled = true
 
-const hands = new Hands({
-  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+              const threeCanvas = renderer.domElement
+              threeCanvas.classList.add('three-canvas')
+              threeCanvas.style.position = 'fixed'
+              threeCanvas.style.top = '0'
+              threeCanvas.style.left = '0'
+              threeCanvas.style.width = '100vw'
+              threeCanvas.style.height = '100vh'
+              threeCanvas.style.zIndex = '1'
+              threeCanvas.style.pointerEvents = 'none'
+              document.body.insertBefore(threeCanvas, document.getElementById('overlay'))
+
+              const floor = new THREE.Mesh(
+          new THREE.PlaneGeometry(30, 30, 20, 20),
+          new THREE.MeshStandardMaterial({ color: 0x000510, roughness: 1, metalness: 0 })
+              )
+              floor.rotation.x = -Math.PI / 2
+              floor.position.y = -1
+              floor.receiveShadow = true
+              scene.add(floor)
+
+              const gridHelper = new THREE.GridHelper(30, 30, 0x0033ff, 0x001133)
+              gridHelper.position.y = -0.99
+              scene.add(gridHelper)
+
+              const grid2 = new THREE.GridHelper(30, 15, 0x220044, 0x110022)
+              grid2.position.y = -0.98
+              scene.add(grid2)
+
+              const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x4444ff, transparent: true, opacity: 0.4 })
+              const arenaSize = 10
+              const corners = [
+          [-arenaSize, -1, -arenaSize], [arenaSize, -1, -arenaSize],
+          [arenaSize, -1, arenaSize], [-arenaSize, -1, arenaSize],
+          [-arenaSize, -1, -arenaSize]
+              ]
+              scene.add(new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints(corners.map(c => new THREE.Vector3(...c))),
+          edgeMaterial
+              ))
+
+              ;[[-10, 0, -10], [10, 0, -10], [-10, 0, 10], [10, 0, 10]].forEach(pos => {
+          const pillar = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.05, 0.05, 4, 8),
+            new THREE.MeshStandardMaterial({ color: 0x4400ff, emissive: 0x2200ff, emissiveIntensity: 3 })
+          )
+          pillar.position.set(pos[0], 1, pos[2])
+          scene.add(pillar)
+          const light = new THREE.PointLight(0x4400ff, 1, 8)
+          light.position.set(pos[0], 2, pos[2])
+          scene.add(light)
+              })
+              // adjust camera angle to better view the arena
+              camera3D.position.set(0, 6, 12)
+              camera3D.lookAt(0, 0, 0)
+
+              // replace existing grid helpers with a single larger grid
+              if (typeof gridHelper !== 'undefined') scene.remove(gridHelper)
+              if (typeof grid2 !== 'undefined') scene.remove(grid2)
+              const grid = new THREE.GridHelper(40, 40, 0x0033ff, 0x001133)
+              grid.position.y = -0.99
+              scene.add(grid)
+
+              // expand the floor to cover a larger arena (replace existing floor geometry)
+              if (floor && floor.geometry) {
+          floor.geometry.dispose()
+          floor.geometry = new THREE.PlaneGeometry(60, 60)
+          floor.rotation.x = -Math.PI / 2
+          floor.position.y = -1
+          floor.receiveShadow = true
+              }
+              scene.add(new THREE.AmbientLight(0x111133, 2))
+              purpleLight = new THREE.PointLight(0x6600ff, 3, 20)
+              purpleLight.position.set(-5, 5, -5)
+              scene.add(purpleLight)
+              blueLight = new THREE.PointLight(0x0044ff, 3, 20)
+              blueLight.position.set(5, 5, 5)
+              scene.add(blueLight)
+              const centerLight = new THREE.PointLight(0xffffff, 1, 10)
+              centerLight.position.set(0, 3, 0)
+              scene.add(centerLight)
+
+              playerOrb = new THREE.Mesh(
+          new THREE.SphereGeometry(0.35, 32, 32),
+          new THREE.MeshStandardMaterial({
+            color: 0x00ffff, emissive: 0x00ccff, emissiveIntensity: 3,
+            roughness: 0, metalness: 1, transparent: true, opacity: 0.9
+          })
+              )
+              playerOrb.position.set(0, 0, 3)
+              scene.add(playerOrb)
+
+              orbShell = new THREE.Mesh(
+          new THREE.SphereGeometry(0.55, 32, 32),
+          new THREE.MeshStandardMaterial({
+            color: 0x0044ff, emissive: 0x0022ff, emissiveIntensity: 1,
+            transparent: true, opacity: 0.15, side: THREE.BackSide
+          })
+              )
+              scene.add(orbShell)
+
+              orbLight = new THREE.PointLight(0x00ffff, 2, 5)
+              playerOrb.add(orbLight)
+
+              setTimeout(() => spawnWave(0), 2000)
+
+              window.addEventListener('resize', () => {
+          camera3D.aspect = window.innerWidth / window.innerHeight
+          camera3D.updateProjectionMatrix()
+          renderer.setSize(window.innerWidth, window.innerHeight)
+          resizeCanvas()
+              })
+
+              let frameCount = 0
+              function animate() {
+          requestAnimationFrame(animate)
+          frameCount++
+
+          const bar = document.getElementById('cooldown-bar')
+          const now = Date.now()
+          const mostRecent = Object.entries(actionCooldowns).sort((a, b) => b[1] - a[1])[0]
+
+          if (mostRecent) {
+            const gesture = mostRecent[0]
+            const expiry = mostRecent[1]
+            const duration = COOLDOWN_TIMES[gesture] || 1000
+            const remaining = Math.max(0, expiry - now)
+            const progress = 1 - (remaining / duration)
+            bar.style.width = (progress * 100) + '%'
+          } else {
+            bar.style.width = '100%'
+          }
+
+          if (enemiesFrozenUntil && now >= enemiesFrozenUntil) {
+            enemiesFrozenUntil = 0
+            enemies.forEach(enemy => {
+              if (!enemy.defeated) {
+          const config = ENEMY_TYPES[enemy.type]
+          enemy.mesh.material.emissive.setHex(config.emissive)
+              }
+            })
+          }
+
+          // stars slow rotation
+          stars.rotation.y += 0.0002
+
+          // breathing lights that pulse opposite each other
+          const breathe = Math.sin(frameCount * 0.008) * 0.5 + 1
+          if (purpleLight) purpleLight.intensity = breathe * 3
+          if (blueLight) blueLight.intensity = (2 - breathe) * 3
+
+          playerOrb.position.y = Math.sin(frameCount * 0.03) * 0.2
+          playerOrb.rotation.y += 0.01
+
+          // orb pulse synced to combat movement / frame count
+          const orbPulse = Math.sin(frameCount * 0.05) * 0.5 + 1
+          if (orbLight) orbLight.intensity = orbPulse * 2.5
+          if (orbShell) {
+            orbShell.material.opacity = 0.08 + orbPulse * 0.06
+          }
+
+          orbShell.position.copy(playerOrb.position)
+          orbShell.rotation.y -= 0.02
+          orbShell.rotation.x += 0.01
+
+          if (!playerDefeated) {
+            const frozen = enemiesFrozenUntil && now < enemiesFrozenUntil
+
+            enemies.forEach(enemy => {
+              if (enemy.defeated || frozen) return
+
+              const dist = enemy.mesh.position.distanceTo(playerOrb.position)
+
+              if (dist > 3) {
+          const dir = new THREE.Vector3()
+          dir.subVectors(playerOrb.position, enemy.mesh.position).normalize()
+          enemy.mesh.position.addScaledVector(dir, enemy.speed)
+          enemy.mesh.position.x +=
+            Math.sin((frameCount + enemy.frameOffset) * 0.08) * 0.03
+              } else {
+          enemy.mesh.position.x += (Math.random() - 0.5) * 0.08
+          enemy.mesh.position.z += (Math.random() - 0.5) * 0.08
+
+          if (frameCount % 60 === 0 && !playerDefeated) {
+            playerHP = Math.max(0, playerHP - enemy.damage)
+            updateHPBars()
+            flashScreenRed()
+            if (playerHP <= 0) {
+              playerDefeated = true
+              updatePill('Defeated', 'Game over')
+            }
+          }
+              }
+
+              enemy.mesh.rotation.x += 0.012
+              enemy.mesh.rotation.y += 0.018
+            })
+
+            if (waveInProgress &&
+          enemies.length > 0 &&
+          enemies.every(e => e.defeated)) {
+              waveInProgress = false
+              enemies.length = 0
+              updateHPBars()
+              setTimeout(() => spawnWave(currentWave + 1), 2500)
+            }
+          }
+
+          renderer.render(scene, camera3D)
+              }
+              animate()
+
+              // Inserted game over / victory handlers
+              function triggerGameOver() {
+          playerDefeated = true
+          flashScreen('rgba(255,0,0,0.4)', 1000)
+          triggerShake(15, 600)
+          
+          setTimeout(() => {
+            const el = document.getElementById('end-screen')
+            const title = document.getElementById('end-title')
+            const subtitle = document.getElementById('end-subtitle')
+            if (title) title.textContent = 'GAME OVER'
+            if (subtitle) subtitle.textContent = 'Score: ' + score.toLocaleString()
+            if (el) el.style.display = 'flex'
+          }, 800)
+              }
+
+              function triggerVictory() {
+          flashScreen('rgba(0,255,150,0.3)', 1000)
+          if (purpleLight) purpleLight.intensity = 12
+          if (blueLight) blueLight.intensity = 12
+          for (let i = 0; i < 10; i++) {
+            const pos = new THREE.Vector3(
+              (Math.random() - 0.5) * 10, 1, (Math.random() - 0.5) * 10
+            )
+            setTimeout(() => spawnParticles(pos, new THREE.Color(0x00ff88), 40), i * 200)
+          }
+          setTimeout(() => {
+            const el = document.getElementById('end-screen')
+            const title = document.getElementById('end-title')
+            const subtitle = document.getElementById('end-subtitle')
+            if (title) {
+              title.textContent = 'VICTORY'
+              title.style.textShadow = '0 0 60px rgba(0,255,150,0.9)'
+            }
+            if (subtitle) subtitle.textContent = 'Final Score: ' + score.toLocaleString()
+            if (el) el.style.display = 'flex'
+          }, 1500)
+              }
+
+              // ─── Gesture stability engine ────────────────────────────────────────────────
+              const gestureBuffer = []
+              const BUFFER_SIZE = 8
+              let currentLockedGesture = null
+              let lockedGestureExpiry = 0
+
+              function submitRawGesture(gesture, source) {
+          const now = Date.now()
+
+          if (currentLockedGesture && now < lockedGestureExpiry) return
+
+          gestureBuffer.push({ gesture, source, time: now })
+          if (gestureBuffer.length > BUFFER_SIZE) gestureBuffer.shift()
+
+          const recent = gestureBuffer.filter(g => now - g.time < 600)
+
+          const counts = {}
+          recent.forEach(g => {
+            counts[g.gesture] = (counts[g.gesture] || 0) + 1
+          })
+
+          const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]
+
+          if (dominant && dominant[1] >= 5) {
+            const confirmedGesture = dominant[0]
+            const confirmedSource = recent.find(g => g.gesture === confirmedGesture)?.source || source
+
+            const lockDuration = {
+              'Fist': 800,
+              'Open Palm': 1000,
+              'Pointing': 800,
+              'Peace': 800,
+              'Gun': 800,
+              'Mouth open': 1200,
+              'Smiling': 1500,
+              'Head tilt left': 1000,
+              'Head tilt right': 1000,
+              'Neutral': 300
+            }
+
+            const duration = lockDuration[confirmedGesture] || 800
+
+            if (confirmedGesture !== currentLockedGesture) {
+              currentLockedGesture = confirmedGesture
+              lockedGestureExpiry = now + duration
+              gestureBuffer.length = 0
+              onInteraction(confirmedGesture, confirmedSource)
+            }
+          }
+              }
+
+              async function startCamera() {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              video: { width: 1280, height: 720, facingMode: 'user' },
+              audio: false
+            })
+            video.srcObject = stream
+            await video.play()
+            updatePill('Ready', 'camera active')
+          } catch (err) {
+            console.error('Camera error:', err)
+            updatePill('Camera error', err.message)
+          }
+              }
+
+              const hands = new Hands({
+          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
 })
 hands.setOptions({
   maxNumHands: 1,
