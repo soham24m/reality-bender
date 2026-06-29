@@ -10,8 +10,11 @@ export function initUI() {
   uiElements.cooldownBar = document.getElementById('cooldown-bar');
   uiElements.gestureConfirm = document.getElementById('gesture-confirm');
   uiElements.waveAnnounce = document.getElementById('wave-announce');
+  
   createMuteButton();
   createMenus();
+  createComboHint();
+  createDifficultyIndicator();
 }
 
 export function createMuteButton() {
@@ -121,14 +124,17 @@ export function createMenus() {
   gameOverScreen.appendChild(finalScore);
 
   const restartBtn = document.createElement('button');
-  restartBtn.textContent = 'PLAY AGAIN';
+  restartBtn.textContent = 'RUN AGAIN';
   restartBtn.style.padding = '15px 40px';
   restartBtn.style.background = 'rgba(255, 0, 0, 0.2)';
   restartBtn.style.border = '1px solid #ff0000';
   restartBtn.style.color = '#ff0000';
   restartBtn.style.cursor = 'pointer';
   restartBtn.style.fontSize = '18px';
-  restartBtn.addEventListener('click', reloadPage);
+  restartBtn.addEventListener('click', () => {
+    uiElements.gameOverScreen.style.display = 'none';
+    import('./main.js').then(m => m.resetGame());
+  });
   gameOverScreen.appendChild(restartBtn);
 
   document.body.appendChild(gameOverScreen);
@@ -170,14 +176,18 @@ export function createMenus() {
   victoryScreen.appendChild(vicScore);
 
   const vicRestartBtn = document.createElement('button');
-  vicRestartBtn.textContent = 'PLAY AGAIN';
+  vicRestartBtn.textContent = 'RUN AGAIN';
   vicRestartBtn.style.padding = '15px 40px';
   vicRestartBtn.style.background = 'rgba(0, 255, 255, 0.2)';
   vicRestartBtn.style.border = '1px solid #00ffff';
   vicRestartBtn.style.color = '#00ffff';
   vicRestartBtn.style.cursor = 'pointer';
   vicRestartBtn.style.fontSize = '18px';
-  vicRestartBtn.addEventListener('click', reloadPage);
+  vicRestartBtn.addEventListener('click', () => {
+    uiElements.victoryScreen.style.display = 'none';
+    document.getElementById('game-container').style.filter = 'none';
+    import('./main.js').then(m => m.resetGame());
+  });
   victoryScreen.appendChild(vicRestartBtn);
 
   document.body.appendChild(victoryScreen);
@@ -245,6 +255,78 @@ export function createMenus() {
 export function togglePauseOverlay(isPaused) {
   if (uiElements.pauseScreen) {
     uiElements.pauseScreen.style.display = isPaused ? 'flex' : 'none';
+  }
+}
+
+export function createComboHint() {
+  const hint = document.createElement('div');
+  hint.id = 'combo-hint';
+  hint.style.position = 'fixed';
+  hint.style.bottom = '100px';
+  hint.style.left = '50%';
+  hint.style.transform = 'translateX(-50%)';
+  hint.style.color = '#ffff00';
+  hint.style.fontFamily = 'sans-serif';
+  hint.style.fontSize = '24px';
+  hint.style.fontWeight = 'bold';
+  hint.style.textShadow = '0 0 20px #ffff00';
+  hint.style.opacity = '0';
+  hint.style.transition = 'opacity 0.5s';
+  hint.style.pointerEvents = 'none';
+  hint.style.zIndex = '50';
+  document.body.appendChild(hint);
+  uiElements.comboHint = hint;
+}
+
+export function showComboHint(text) {
+  if (!uiElements.comboHint) return;
+  uiElements.comboHint.textContent = text;
+  uiElements.comboHint.style.opacity = '1';
+  setTimeout(() => {
+    if (uiElements.comboHint) uiElements.comboHint.style.opacity = '0';
+  }, 4000);
+}
+
+export function createDifficultyIndicator() {
+  const diff = document.createElement('div');
+  diff.id = 'diff-indicator';
+  diff.style.position = 'fixed';
+  diff.style.top = '100px';
+  diff.style.left = '50%';
+  diff.style.transform = 'translateX(-50%)';
+  diff.style.color = '#ffffff';
+  diff.style.fontFamily = 'sans-serif';
+  diff.style.fontSize = '20px';
+  diff.style.fontWeight = 'bold';
+  diff.style.textShadow = '0 0 10px #ffffff';
+  diff.style.opacity = '0';
+  diff.style.transition = 'opacity 0.5s';
+  diff.style.pointerEvents = 'none';
+  diff.style.zIndex = '50';
+  document.body.appendChild(diff);
+  uiElements.diffIndicator = diff;
+}
+
+export function showDifficultyIndicator(text, color) {
+  if (!uiElements.diffIndicator) return;
+  uiElements.diffIndicator.textContent = text;
+  uiElements.diffIndicator.style.color = color;
+  uiElements.diffIndicator.style.textShadow = '0 0 10px ' + color;
+  uiElements.diffIndicator.style.opacity = '1';
+  setTimeout(() => {
+    if (uiElements.diffIndicator) uiElements.diffIndicator.style.opacity = '0';
+  }, 4000);
+}
+
+export function triggerCinematicPulse() {
+  const container = document.getElementById('game-container');
+  if (container) {
+    container.style.transition = 'filter 0.5s';
+    container.style.filter = 'brightness(2) saturate(2) hue-rotate(90deg)';
+    setTimeout(() => {
+      container.style.transition = 'filter 2s';
+      container.style.filter = 'none';
+    }, 500);
   }
 }
 

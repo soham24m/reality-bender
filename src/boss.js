@@ -1,6 +1,7 @@
-import { sceneState, createExplosion } from './scene.js';
+import { sceneState, createExplosion, triggerRealityCollapse } from './scene.js';
 import { takeDamage, addScore } from './combat.js';
 import { playBossHit } from './audio.js';
+import { triggerInvert, setSaturateMode, enableScanlines, applyCanvasFilter } from './effects.js';
 
 export const bossState = {
   isActive: false,
@@ -23,16 +24,22 @@ export const bossState = {
   uiStance: null,
   fightStartTime: 0,
   isEnraged: false,
-  counterTimer: 0
+  counterTimer: 0,
+  minions: [],
+  minionsSpawned: false,
+  vulnerableTimer: 0
 };
 
-export function spawnBoss() {
+export function spawnBoss(startPhase = 1) {
   bossState.isActive = true;
   bossState.hp = 400;
-  bossState.phase = 1;
+  bossState.phase = startPhase;
   bossState.actionState = 'approach';
   bossState.fightStartTime = performance.now();
   bossState.isEnraged = false;
+  bossState.minionsSpawned = false;
+  bossState.vulnerableTimer = 0;
+  bossState.minions = [];
   
   const geo = new THREE.IcosahedronGeometry(3.0);
   const mat = new THREE.MeshBasicMaterial({ color: 0xff4400, wireframe: false });
@@ -202,10 +209,35 @@ export function updateBoss(delta) {
     bossState.phase = 2;
     bossState.mesh.scale.set(0.8, 0.8, 0.8);
     bossState.mesh.material.color.setHex(0xff8800);
+    triggerInvert();
   } else if (bossState.phase === 2 && hpPct <= 0.2) {
     bossState.phase = 3;
     bossState.mesh.scale.set(0.6, 0.6, 0.6);
     bossState.mesh.material.color.setHex(0xff0044);
+    triggerInvert();
+    setSaturateMode(true);
+  } else if (bossState.phase === 3 && hpPct <= 0.08) {
+    bossState.phase = 4;
+    triggerRealityCollapse();
+    enableScanlines();
+    bossState.mesh.material.color.setHex(0xffffff);
+  }
+
+  // Minion Spawn
+  if (bossState.phase >= 2 && !bossState.minionsSpawned) {
+    bossState.minionsSpawned = true;
+    spawnMinions();
+  }
+
+  // Vulnerability Timer
+  if (bossState.vulnerableTimer > 0) {
+    bossState.vulnerableTimer -= delta * 1000;
+    if (bossState.vulnerableTimer <= 0) {
+      setBossThought('Defenses online.');
+      bossState.mesh.material.color.setHex(bossState.phase === 2 ? 0xff8800 : 0xff0044);
+    } else {
+      bossState.mesh.material.color.setHex(0xaaaaaa); // Greyed out
+    }
   }
 
   updateBossUI();
@@ -226,7 +258,7 @@ export function updateBoss(delta) {
   if (now < bossState.frozenUntil) {
     bossState.mesh.material.color.setHex(0x4444ff);
     return;
-  } else {
+  } else if (bossState.vulnerableTimer <= 0) {
     // Restore color based on phase
     if (bossState.phase === 1) bossState.mesh.material.color.setHex(0xff4400);
     else if (bossState.phase === 2) bossState.mesh.material.color.setHex(0xff8800);
@@ -250,8 +282,8 @@ export function updateBoss(delta) {
         bossState.actionState = 'circle';
       }
     }
-  } else {
-    // Regular Firing projectiles
+  } else if (bossState.vulnerableTimer <= 0) {
+    // Regular Firing projectiles (only if not vulnerable)
     const fireCd = (2500 / bossState.phase) * (bossState.isEnraged ? 0.7 : 1);
     if (now - bossState.lastAtkTime > fireCd && !bossState.isShielded) {
       fireBossProjectile();
@@ -260,9 +292,12 @@ export function updateBoss(delta) {
   }
 
   updateBossProjectiles(delta);
+  updateMinions(delta, now);
 }
 
 export function chooseNextAction() {
+  if (bossState.vulnerableTimer > 0) return; // Stunned/Vulnerable, no actions
+
   const mostUsed = getMostUsedGesture();
   bossState.actionTimer = 3000; // 3 seconds per action state
   
@@ -295,6 +330,8 @@ export function chooseNextAction() {
 }
 
 export function executeAction(delta) {
+  if (bossState.vulnerableTimer > 0) return; // Stunned
+
   const center = sceneState.playerOrb ? sceneState.playerOrb.position : new THREE.Vector3(0,0,0);
   const pos = bossState.mesh.position;
   const dist = pos.distanceTo(center);
@@ -363,10 +400,13 @@ export function updateBossProjectiles(delta) {
 
 export function damageBoss(amount) {
   if (!bossState.isActive) return;
-  if (bossState.isShielded) {
+  if (bossState.isShielded && bossState.vulnerableTimer <= 0) {
     // Shield blocks damage
     return;
   }
+
+  // Bonus damage if vulnerable
+  if (bossState.vulnerableTimer > 0) amount *= 1.5;
 
   bossState.hp -= amount;
   playBossHit(bossState.phase);
@@ -374,7 +414,8 @@ export function damageBoss(amount) {
   bossState.mesh.material.color.setHex(0xffffff);
   setTimeout(() => {
     if (bossState.mesh) {
-      if (bossState.phase === 1) bossState.mesh.material.color.setHex(0xff4400);
+      if (bossState.vulnerableTimer > 0) bossState.mesh.material.color.setHex(0xaaaaaa);
+      else if (bossState.phase === 1) bossState.mesh.material.color.setHex(0xff4400);
       else if (bossState.phase === 2) bossState.mesh.material.color.setHex(0xff8800);
       else bossState.mesh.material.color.setHex(0xff0044);
     }
@@ -383,6 +424,74 @@ export function damageBoss(amount) {
   if (bossState.hp <= 0) {
     bossDefeated();
   }
+}
+
+export function spawnMinions() {
+  setBossThought('Reinforcements...');
+  for (let i = 0; i < 2; i++) {
+    const geo = new THREE.IcosahedronGeometry(0.8);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xff4400, wireframe: false });
+    const mesh = new THREE.Mesh(geo, mat);
+    sceneState.scene.add(mesh);
+    
+    bossState.minions.push({
+      mesh: mesh,
+      angle: i * Math.PI,
+      lastFireTime: performance.now() + Math.random() * 2000
+    });
+  }
+}
+
+export function updateMinions(delta, now) {
+  if (bossState.minions.length === 0) return;
+  
+  const center = sceneState.playerOrb ? sceneState.playerOrb.position : new THREE.Vector3(0,0,0);
+
+  for (let i = bossState.minions.length - 1; i >= 0; i--) {
+    const minion = bossState.minions[i];
+    minion.angle += delta * 2;
+    minion.mesh.position.x = bossState.mesh.position.x + Math.cos(minion.angle) * 5;
+    minion.mesh.position.y = bossState.mesh.position.y + Math.sin(minion.angle * 2) * 2;
+    minion.mesh.position.z = bossState.mesh.position.z + Math.sin(minion.angle) * 5;
+    minion.mesh.rotation.y += delta;
+    minion.mesh.rotation.x += delta;
+    
+    // Fire projectile
+    if (now - minion.lastFireTime > 3000) {
+      const dir = new THREE.Vector3().subVectors(center, minion.mesh.position).normalize();
+      const geo = new THREE.SphereGeometry(0.3, 8, 8);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xff8800 });
+      const proj = new THREE.Mesh(geo, mat);
+      proj.position.copy(minion.mesh.position);
+      sceneState.scene.add(proj);
+
+      bossState.projectiles.push({
+        mesh: proj,
+        dir: dir,
+        speed: 8,
+        age: 0
+      });
+      minion.lastFireTime = now;
+    }
+  }
+}
+
+export function damageMinions() {
+  if (bossState.minions.length === 0) return;
+  // Any hit kills minions
+  for (let i = bossState.minions.length - 1; i >= 0; i--) {
+    const minion = bossState.minions[i];
+    createExplosion(minion.mesh.position, 0xff4400);
+    sceneState.scene.remove(minion.mesh);
+    minion.mesh.geometry.dispose();
+    minion.mesh.material.dispose();
+  }
+  bossState.minions = [];
+  bossState.vulnerableTimer = 3000;
+  bossState.isShielded = false;
+  if (bossState.shieldMesh) bossState.shieldMesh.material.opacity = 0;
+  setBossThought('SYSTEM COMPROMISED!');
+  updateStanceUI('VULNERABLE', '#ff00ff');
 }
 
 export function bossDefeated() {
@@ -404,4 +513,33 @@ export function bossDefeated() {
   if (bossState.onDefeat) {
     bossState.onDefeat();
   }
+}
+
+export function resetBoss() {
+  if (bossState.uiContainer) {
+    bossState.uiContainer.remove();
+    bossState.uiContainer = null;
+  }
+  if (bossState.mesh) {
+    sceneState.scene.remove(bossState.mesh);
+    bossState.mesh.geometry.dispose();
+    bossState.mesh.material.dispose();
+    bossState.mesh = null;
+  }
+  for (let m of bossState.minions) {
+    sceneState.scene.remove(m.mesh);
+    m.mesh.geometry.dispose();
+    m.mesh.material.dispose();
+  }
+  bossState.minions = [];
+  
+  for (let p of bossState.projectiles) {
+    sceneState.scene.remove(p.mesh);
+    p.mesh.geometry.dispose();
+    p.mesh.material.dispose();
+  }
+  bossState.projectiles = [];
+  
+  bossState.isActive = false;
+  bossState.gestureHistory = [];
 }
